@@ -10,7 +10,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: rsentry
-      POSTGRES_PASSWORD: rsentry_pass
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rsentry_pass}
       POSTGRES_DB: rsentry_db
     ports:
       - "5432:5432"
@@ -47,7 +47,7 @@ services:
     container_name: rsentry_backend
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql+asyncpg://rsentry:rsentry_pass@postgres:5432/rsentry_db
+      DATABASE_URL: postgresql+asyncpg://rsentry:${POSTGRES_PASSWORD:-rsentry_pass}@postgres:5432/rsentry_db
       REDIS_URL: redis://redis:6379/0
       ALLOWED_ORIGINS: "http://localhost:3000,http://localhost:80"
     ports:
@@ -72,7 +72,7 @@ services:
     restart: unless-stopped
     command: celery -A backend.workers.tasks.celery_app worker --loglevel=info --concurrency=4
     environment:
-      DATABASE_URL: postgresql+asyncpg://rsentry:rsentry_pass@postgres:5432/rsentry_db
+      DATABASE_URL: postgresql+asyncpg://rsentry:${POSTGRES_PASSWORD:-rsentry_pass}@postgres:5432/rsentry_db
       REDIS_URL: redis://redis:6379/0
     depends_on:
       postgres:
