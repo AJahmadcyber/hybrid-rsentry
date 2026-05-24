@@ -20,17 +20,20 @@ logger = logging.getLogger(__name__)
 
 GROQ_BASE_URL   = "https://api.groq.com/openai/v1"
 GROQ_MODEL      = "llama-3.3-70b-versatile"
-NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
-NVIDIA_MODEL    = "meta/llama-3.1-70b-instruct"
+NVIDIA_BASE_URL   = "https://integrate.api.nvidia.com/v1"
+NVIDIA_MODEL      = "meta/llama-3.1-70b-instruct"
+CEREBRAS_BASE_URL = "https://api.cerebras.ai/v1"
+CEREBRAS_MODEL    = "llama-3.3-70b"
 _RATE_DELAY = 3.0  # seconds between calls per key
 
 # Rate limit Redis keys — one per API key so they're fully independent
 _RATE_KEY_EVENTS = "rsentry:nvidia_last_call_events"
 _RATE_KEY_ALERTS = "rsentry:nvidia_last_call_alerts"
 
-_client_events = None   # for live event analysis
-_client_alerts = None   # for alert analysis
-_redis = None
+_client_events   = None   # for live event analysis
+_client_alerts   = None   # for alert analysis
+_client_cerebras = None   # fallback provider
+_redis           = None
 
 # Lua script for atomic check-and-claim of a rate limit slot.
 # Returns '0' if the slot was claimed, or the remaining wait seconds as a string.
@@ -88,6 +91,41 @@ def _get_client_alerts():
             _client_alerts = OpenAI(base_url=NVIDIA_BASE_URL, api_key=key)
             _client_alerts._model = NVIDIA_MODEL
     return _client_alerts
+
+
+def _get_client_cerebras():
+    global _client_cerebras
+    if _client_cerebras is None:
+        key = os.getenv("AI_API_KEY_CEREBRAS", "")
+        if not key:
+            raise RuntimeError("AI_API_KEY_CEREBRAS not set in environment")
+        _client_cerebras = OpenAI(base_url=CEREBRAS_BASE_URL, api_key=key)
+        _client_cerebras._model = CEREBRAS_MODEL
+    return _client_cerebras
+
+
+def _call_with_fallback(clients: list, prompt: str) -> dict:
+    """يجرب كل client بالترتيب، لو فشل يروح للثاني."""
+    last_exc = None
+    for i, client in enumerate(clients):
+        try:
+            return _call_nvidia(client, prompt)
+        except AuthenticationError as e:
+            logger.error("Client %d auth failed, trying next", i + 1)
+            last_exc = e
+        except RateLimitError as e:
+            logger.warning("Client %d rate limited, trying next", i + 1)
+            last_exc = e
+        except APIConnectionError as e:
+            logger.warning("Client %d connection failed, trying next", i + 1)
+            last_exc = e
+        except json.JSONDecodeError as e:
+            logger.warning("Client %d returned invalid JSON, trying next", i + 1)
+            last_exc = e
+        except Exception as e:
+            logger.warning("Client %d failed: %s, trying next", i + 1, e)
+            last_exc = e
+    raise last_exc or RuntimeError("All clients failed")
 
 
 def _rate_limit(redis_key: str):
@@ -184,7 +222,10 @@ def analyze_event(event: dict) -> dict:
     """
     try:
         _rate_limit(_RATE_KEY_EVENTS)
-        result = _call_nvidia(_get_client_events(), build_prompt(event))
+        result = _call_with_fallback(
+            [_get_client_events(), _get_client_alerts(), _get_client_cerebras()],
+            build_prompt(event)
+        )
         return result
     except AuthenticationError:
         logger.error("Event API key invalid or expired — check AI_API_KEY")
@@ -211,7 +252,10 @@ def analyze_alert(event: dict) -> dict:
     """
     try:
         _rate_limit(_RATE_KEY_ALERTS)
-        result = _call_nvidia(_get_client_alerts(), build_prompt(event))
+        result = _call_with_fallback(
+            [_get_client_alerts(), _get_client_events(), _get_client_cerebras()],
+            build_prompt(event)
+        )
         return result
     except AuthenticationError:
         logger.error("Alert API key invalid or expired — check AI_API_KEY_ALERTS")
@@ -280,7 +324,10 @@ def analyze_system_health(recent_events: list[dict]) -> dict:
     """
     try:
         _rate_limit(_RATE_KEY_EVENTS)
-        result = _call_nvidia(_get_client_events(), _build_health_prompt(recent_events))
+        result = _call_with_fallback(
+            [_get_client_events(), _get_client_alerts(), _get_client_cerebras()],
+            _build_health_prompt(recent_events)
+        )
         return result
     except AuthenticationError:
         logger.error("Health API key invalid or expired — check AI_API_KEY")
