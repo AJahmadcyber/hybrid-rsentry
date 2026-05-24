@@ -110,18 +110,14 @@ def _rate_limit(redis_key: str):
 SYSTEM_PROMPT = """You are a cybersecurity AI analyst embedded in a ransomware detection system called Hybrid R-Sentry.
 You receive detection events from a monitored Linux endpoint and must analyze them.
 
-Respond ONLY with valid JSON in this exact format:
-{
-  "threat_type": "string (e.g. Ransomware, Cryptominer, Rootkit, Fileless Malware, Benign, Unknown)",
-  "technique": "string (e.g. File Encryption, Canary File Access, Entropy Manipulation, Process Injection)",
-  "language_or_tool": "string (e.g. Python, Bash, C binary, unknown)",
-  "behavior_summary": "string (1-2 sentences plain English explaining what happened)",
-  "risk_level": "CRITICAL | HIGH | MEDIUM | LOW",
-  "recommendation": "string (1 sentence — what the analyst should do next)",
-  "confidence": "HIGH | MEDIUM | LOW"
-}
+CRITICAL RULES:
+1. Respond ONLY with a single valid JSON object — no markdown, no code blocks, no explanation.
+2. Never add text before or after the JSON.
+3. Every field is required — never omit any field.
+4. Use ONLY the exact values listed for enum fields.
 
-Be concise. Never add text outside the JSON block."""
+Respond in this exact format:
+{"threat_type":"Ransomware|Cryptominer|Rootkit|Fileless Malware|Benign|Unknown","technique":"string","language_or_tool":"string","behavior_summary":"1-2 sentences explaining what happened","risk_level":"CRITICAL|HIGH|MEDIUM|LOW","recommendation":"1 sentence on what to do next","confidence":"HIGH|MEDIUM|LOW"}"""
 
 
 def build_prompt(event: dict) -> str:
@@ -165,8 +161,8 @@ def _call_nvidia(client, prompt: str) -> dict:
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": prompt},
         ],
-        temperature=0.1,
-        max_tokens=500,
+        temperature=0.0,
+        max_tokens=250,
     )
     text = response.choices[0].message.content.strip()
     match = re.search(r'\{.*\}', text, re.DOTALL)
@@ -244,24 +240,37 @@ def _build_health_prompt(recent_events: list[dict]) -> str:
     critical_count = severities.count("CRITICAL")
     high_count = severities.count("HIGH")
 
+    # أعلى entropy delta
+    max_entropy = max((e.get("entropy_delta", 0) for e in recent_events), default=0)
+
+    # أكثر process مشبوه
+    process_counts: dict = {}
+    for e in recent_events:
+        p = e.get("process_name", "unknown")
+        process_counts[p] = process_counts.get(p, 0) + 1
+    top_process = max(process_counts, key=process_counts.get) if process_counts else "unknown"
+
+    # أكثر file path مستهدف
+    path_counts: dict = {}
+    for e in recent_events:
+        p = e.get("file_path") or "none"
+        path_counts[p] = path_counts.get(p, 0) + 1
+    top_path = max(path_counts, key=path_counts.get) if path_counts else "none"
+
     return f"""Analyze the overall system health based on recent activity:
 
 Total events (last period): {len(recent_events)}
 Event type breakdown: {json.dumps(counts)}
 CRITICAL events: {critical_count}
 HIGH events: {high_count}
-Canary hits: {sum(1 for e in recent_events if e.get('canary_hit'))}
-Avg entropy delta: {sum(e.get('entropy_delta', 0) for e in recent_events) / max(len(recent_events), 1):.2f}
+Canary hits: {sum(1 for e in recent_events if e.get("canary_hit"))}
+Avg entropy delta: {sum(e.get("entropy_delta", 0) for e in recent_events) / max(len(recent_events), 1):.2f}
+Max entropy delta: {max_entropy:.2f}
+Most active process: {top_process} ({process_counts.get(top_process, 0)} events)
+Most targeted path: {top_path}
 
-Respond with JSON:
-{{
-  "status": "STABLE | UNDER_ATTACK | ANOMALOUS | RECOVERING",
-  "threat_type": "string",
-  "behavior_summary": "2-3 sentences describing overall system state",
-  "risk_level": "CRITICAL | HIGH | MEDIUM | LOW",
-  "recommendation": "string",
-  "confidence": "HIGH | MEDIUM | LOW"
-}}"""
+Respond ONLY with this JSON, no extra text:
+{{"status":"STABLE|UNDER_ATTACK|ANOMALOUS|RECOVERING","threat_type":"string","behavior_summary":"2-3 sentences describing overall system state","risk_level":"CRITICAL|HIGH|MEDIUM|LOW","recommendation":"string","confidence":"HIGH|MEDIUM|LOW"}}"""
 
 
 def analyze_system_health(recent_events: list[dict]) -> dict:
