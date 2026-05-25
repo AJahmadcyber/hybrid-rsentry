@@ -20,6 +20,9 @@ from backend.workers.tasks import (
     analyze_event_ai, auto_ack_containment, publish_markov_analysis,
 )
 
+AUTO_CONTAIN_THRESHOLD_LINEAGE = 70.0  # lineage score عشان يعمل auto contain
+AUTO_CONTAIN_ENTROPY = 3.5             # entropy delta عشان يعمل auto contain
+
 router = APIRouter(prefix="/api/events", tags=["events"])
 
 ALERT_SEVERITIES = {Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM}
@@ -85,6 +88,28 @@ async def ingest_event(payload: EventCreate, db: AsyncSession = Depends(get_db))
         payload.severity.value, payload.file_path, payload.entropy_delta,
         payload.canary_hit, payload.process_name, payload.details,
     )
+
+    # Auto containment — لو CRITICAL وفيه canary hit أو lineage عالي
+    should_contain = (
+        payload.severity == Severity.CRITICAL
+        and not is_internal
+        and (
+            payload.canary_hit
+            or payload.lineage_score >= AUTO_CONTAIN_THRESHOLD_LINEAGE
+            or payload.entropy_delta >= AUTO_CONTAIN_ENTROPY
+        )
+    )
+
+    if should_contain:
+        result = await db.execute(select(Host).where(Host.host_id == payload.host_id))
+        host = result.scalar_one_or_none()
+        if host and not host.is_contained:
+            host.is_contained = True
+            await db.commit()
+            push_alert_ws.delay(
+                str(alert.id) if alert else "auto",
+                payload.host_id, "CRITICAL", "AUTO_CONTAINMENT"
+            )
 
     if alert:
         push_alert_ws.delay(str(alert.id), payload.host_id,

@@ -157,9 +157,23 @@ class RsentryEventHandler(FileSystemEventHandler):
         )
 
         # Auto-containment on CRITICAL
-        if severity == "CRITICAL" and self.auto_contain and pid > 0:
-            self._trigger_containment(pid, process_name, src_path,
-                                       lineage_score, entropy_delta)
+        # الـ Markov chain بتنقل الـ canary files بـ pid=0 — ما نعمل containment لها
+        is_markov = (pid == 0 and details and details.get("sub_type") == "moved")
+        if severity == "CRITICAL" and self.auto_contain and not is_markov:
+            if pid > 0:
+                # process معروف — نعمل SIGSTOP وSIGKILL
+                self._trigger_containment(pid, process_name, src_path,
+                                           lineage_score, entropy_delta)
+            else:
+                # pid=0 بس مش Markov — canary اتحذف أو حدث مجهول
+                logger.critical("CRITICAL event pid=0 (not Markov) — sending containment alert")
+                self.client.send_containment_triggered(
+                    pid=0,
+                    process_name="unknown",
+                    file_path=src_path,
+                    lineage_score=lineage_score,
+                    entropy_delta=entropy_delta,
+                )
 
     def _trigger_containment(
         self, pid: int, process_name: str, file_path: str,
