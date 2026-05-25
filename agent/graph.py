@@ -41,13 +41,16 @@ class FilesystemGraph:
                 except OSError as exc:
                     logger.warning("Could not remove canary %s: %s", path, exc)
 
-            # Third — scan all txt files for canary content marker
+            # Third — scan all txt files for canary content marker (read only first 50 bytes)
             for path in self.root.rglob("*.txt"):
                 try:
-                    if path.is_file() and CANARY_CONTENT in path.read_text(errors="ignore")[:50]:
-                        path.unlink()
-                        removed += 1
-                        logger.debug("Removed content-identified canary: %s", path)
+                    if path.is_file():
+                        with open(path, "r", errors="ignore") as f:
+                            header = f.read(50)
+                        if CANARY_CONTENT in header:
+                            path.unlink()
+                            removed += 1
+                            logger.debug("Removed content-identified canary: %s", path)
                 except OSError:
                     pass
 
