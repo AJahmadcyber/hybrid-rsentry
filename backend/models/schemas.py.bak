@@ -163,21 +163,6 @@ class AlertResponse(BaseModel):
         from_attributes = True
 
 
-class AlertWithEventResponse(BaseModel):
-    """Alert + linked Event in one payload — for report generation."""
-    id: uuid.UUID
-    event_id: uuid.UUID
-    host_id: str
-    severity: Severity
-    acknowledged: bool
-    created_at: datetime
-    resolved_at: Optional[datetime]
-    event: Optional[EventResponse] = None
-
-    class Config:
-        from_attributes = True
-
-
 class EvidenceCreate(BaseModel):
     alert_id: uuid.UUID
     pid: Optional[int]

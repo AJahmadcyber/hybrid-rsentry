@@ -8,12 +8,11 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from backend.models.database import get_db
 from backend.models.schemas import (
     Alert, Event, Evidence, EvidenceCreate, EvidenceResponse,
-    AlertResponse, AlertWithEventResponse, Severity,
+    AlertResponse, Severity,
 )
 
 router = APIRouter(prefix="/api/alerts", tags=["alerts"])
@@ -57,38 +56,6 @@ async def alert_counts(db: AsyncSession = Depends(get_db)):
     )
     counts["TOTAL"] = total_result.scalar_one()
     return counts
-
-
-@router.get("/with-events", response_model=list[AlertWithEventResponse])
-async def list_alerts_with_events(
-    host_id: Optional[str] = Query(None),
-    severity: Optional[Severity] = Query(None),
-    acknowledged: Optional[bool] = Query(None),
-    date_from: Optional[datetime] = Query(None),
-    date_to: Optional[datetime] = Query(None),
-    limit: int = Query(500, le=2000),
-    offset: int = Query(0),
-    db: AsyncSession = Depends(get_db),
-):
-    """List alerts with their linked Event eagerly loaded — used by report generator."""
-    q = (
-        select(Alert)
-        .options(selectinload(Alert.event))
-        .order_by(desc(Alert.created_at))
-        .offset(offset).limit(limit)
-    )
-    if host_id:
-        q = q.where(Alert.host_id == host_id)
-    if severity:
-        q = q.where(Alert.severity == severity)
-    if acknowledged is not None:
-        q = q.where(Alert.acknowledged == acknowledged)
-    if date_from:
-        q = q.where(Alert.created_at >= date_from)
-    if date_to:
-        q = q.where(Alert.created_at <= date_to)
-    result = await db.execute(q)
-    return result.scalars().all()
 
 
 @router.get("/{alert_id}", response_model=AlertResponse)
