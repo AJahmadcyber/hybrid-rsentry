@@ -132,61 +132,80 @@ When a CRITICAL threat is detected, the system automatically executes a tree-awa
 
 ### Quick Start (recommended)
 
+**Step 1 — Clone and run first-time setup**
 ```bash
 git clone https://github.com/Mohhudib/hybrid-rsentry.git
 cd hybrid-rsentry
-cp .env.example .env
-# Edit .env — set POSTGRES_PASSWORD, DATABASE_URL, API keys, WATCH_PATH
+bash setup.sh
+```
+
+`setup.sh` installs system packages (requires sudo), creates the Python venv, installs all Python and Node dependencies, and copies `.env.example` to `.env`.
+
+**Step 2 — Configure your environment**
+```bash
+# Edit .env — you must set these before running:
+#   POSTGRES_PASSWORD   — choose a strong password
+#   DATABASE_URL        — update to match POSTGRES_PASSWORD
+#   NVIDIA_API_KEY      — your AI provider API key
+#   NVIDIA_API_KEY_ALERTS
+#   WATCH_PATH          — a directory OUTSIDE the project folder
+nano .env
+```
+
+**Step 3 — Start everything**
+```bash
 bash start.sh
 ```
 
-`start.sh` starts all five processes in the correct order and logs to `/tmp/rsentry-*.log`.
+`start.sh` starts all five processes in the correct order and logs to `/tmp/rsentry-*.log`. Press `Ctrl+C` to stop all services cleanly.
 
-### Manual Start
+Open [http://localhost:3000](http://localhost:3000) to access the dashboard.
 
-**1. Clone and configure**
+---
+
+### Subsequent Runs
+
+Once the venv and node_modules are in place, just:
 ```bash
-git clone https://github.com/Mohhudib/hybrid-rsentry.git
-cd hybrid-rsentry
-cp .env.example .env
-# Edit .env with your values — see Environment Variables below
+bash start.sh
 ```
 
-**2. Start infrastructure**
+---
+
+### Manual Start (for development or debugging)
+
+Each process runs in its own terminal.
+
+**Terminal 1 — Infrastructure**
 ```bash
 docker compose up -d
 ```
 
-**3. Set up Python environment**
-```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
-
-**4. Start the backend** (Terminal 2)
+**Terminal 2 — Backend**
 ```bash
 set -a && source .env && set +a
 source venv/bin/activate
 uvicorn backend.main:app --reload
 ```
 
-**5. Start Celery workers** (Terminal 3)
+**Terminal 3 — Celery workers**
 ```bash
 set -a && source .env && set +a
+source venv/bin/activate
 PYTHONPATH=. celery -A backend.workers.tasks:celery_app worker --loglevel=info
 ```
 
-**6. Start the agent** (Terminal 4 — requires root to set iptables rules)
+**Terminal 4 — Agent** (requires root to set iptables rules)
 ```bash
 set -a && source .env && set +a
 sudo -E venv/bin/python -m agent.monitor
 ```
 
-**7. Start the frontend** (Terminal 5)
+> `sudo -E` is mandatory — it preserves `WATCH_PATH` and the AI keys through the privilege boundary. Without it the agent watches the wrong path.
+
+**Terminal 5 — Frontend**
 ```bash
 cd frontend
-npm install
 npm start
 ```
 
