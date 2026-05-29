@@ -145,8 +145,8 @@ Fix: confirm the Celery worker is running.
 **Risk score stuck at 0 after clearing alerts**
 This is correct behaviour. The score recalculates via Celery on the next incoming event.
 
-**GitHub Actions deploy-landing.yml — Node.js 20 deprecation**
-GitHub Actions will drop Node.js 20 on **June 16, 2026**. The `actions/checkout@v4`, `actions/setup-node@v4`, and `actions/upload-pages-artifact@v3` steps will need upgrading before that date or the landing page deploy will fail.
+**GitHub Actions deploy-landing.yml — Node.js version**
+The workflow uses `node-version: 22` and `node:22-alpine` in the Docker build. Node 22 is LTS until April 2027.
 
 ---
 
