@@ -85,11 +85,11 @@ See the [README](README.md) for the full startup sequence.
 
 ### Step 5 — Create a Feature Branch
 
-Never work directly on `main` or `develop`. Always create a new branch off `develop`:
+Never work directly on `main`. Always create a new branch off `main`:
 
 ```bash
-git checkout develop
-git pull upstream develop       # sync with the latest upstream changes first
+git checkout main
+git pull upstream main       # sync with the latest upstream changes first
 git checkout -b feature/your-feature-name
 ```
 
@@ -104,7 +104,7 @@ Use descriptive branch names:
 - Keep changes focused — one feature or fix per branch
 - If touching `agent/` code, test that it does not generate false positive alerts on a live system
 - If adding new environment variables, add them to `.env.example` with a placeholder value
-- Update the [Wiki](https://github.com/Mohhudib/hybrid-rsentry/wiki) if you change any behaviour
+- Run the test suite before submitting: `pytest`
 
 Commit using the prefix style:
 
@@ -114,6 +114,7 @@ fix: resolve false positive on /tmp writes
 docs: update API reference
 chore: bump asyncpg to 0.31.0
 refactor: simplify lineage scorer
+test: add unit tests for entropy engine
 ```
 
 ---
@@ -130,11 +131,11 @@ Then on GitHub:
 
 1. Go to your fork at `https://github.com/YOUR_USERNAME/hybrid-rsentry`
 2. Click **Compare & pull request** (GitHub shows this automatically after a push)
-3. Set the base repository to `Mohhudib/hybrid-rsentry` and the base branch to **`develop`**
-4. Fill in the PR title and description fully
+3. Set the base repository to `Mohhudib/hybrid-rsentry` and the base branch to **`main`**
+4. Fill in the PR title and description fully — include what changed, why, and how to test it
 5. Click **Create pull request**
 
-PRs that introduce new false positives will not be merged.
+PRs that introduce new false positives on a live Kali system will not be merged.
 
 ---
 
@@ -143,10 +144,10 @@ PRs that introduce new false positives will not be merged.
 Before starting any new work, sync your fork with the latest upstream changes:
 
 ```bash
-git checkout develop
+git checkout main
 git fetch upstream
-git merge upstream/develop
-git push origin develop
+git merge upstream/main
+git push origin main
 ```
 
 This keeps your fork up to date and avoids merge conflicts later.
@@ -157,12 +158,11 @@ This keeps your fork up to date and avoids merge conflicts later.
 
 | Branch | Purpose |
 |---|---|
-| `main` | Stable releases only |
-| `develop` | Active development — base all PRs here |
+| `main` | Active development — base all PRs here |
 | `feature/your-feature` | New features |
 | `fix/your-fix` | Bug fixes |
 
-Always branch off `develop`, never `main`.
+Always branch off `main`.
 
 ---
 
