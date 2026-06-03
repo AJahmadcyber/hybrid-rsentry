@@ -427,6 +427,7 @@ class Monitor:
         self._score   = score_for_event
         self._wl      = is_whitelisted
         self._canaries= [str(p) for p in canaries]
+        self._sim_fn  = None
 
     def _heartbeat_loop(self):
         while not self._stop_event.is_set():
@@ -488,18 +489,6 @@ class Monitor:
 
         self._ebpf.IGNORE_COMMS.update(IGNORE_COMMS)
 
-        engine = self._ebpf.DetectionEngine(
-            host_id            = HOST_ID,
-            watch_dirs         = [self.watch_path],
-            canary_paths       = self._canaries,
-            velocity_threshold = EBPF_THRESHOLD,
-            window_seconds     = EBPF_WINDOW,
-            self_pid           = os.getpid(),
-            ignore_comms       = IGNORE_COMMS,
-            lineage_fn         = self.lineage_fn,
-            entropy_fn         = self.entropy_fn,
-        )
-        self.repositioner._ebpf_engine = engine
 
         print(f"[monitor] backend=eBPF mode={SENSOR_MODE} "
               f"threshold={EBPF_THRESHOLD}/{EBPF_WINDOW}s "
@@ -514,7 +503,36 @@ class Monitor:
             window_seconds = EBPF_WINDOW,
             emit           = self.emit_fn,
             contain        = self.contain_fn,
+            lineage_fn     = self.lineage_fn,
+            entropy_fn     = self.entropy_fn,
+            sim_fn         = self._sim_fn if hasattr(self, "_sim_fn") else None,
         )
+
+    def set_sim(self, sim_path: str, sim_target: str, sim_traversal: str) -> None:
+        """Wire a simulation to run inside the eBPF sensor loop."""
+        import importlib.util as _ilu
+        import sys as _sys
+        _sys.path.insert(0, '/home/kali/hybrid-rsentry')
+        _sys.path.insert(0, '/home/kali/hybrid-rsentry/simulations')
+        _spec = _ilu.spec_from_file_location("_sim", sim_path)
+        _mod  = _ilu.module_from_spec(_spec)
+        _spec.loader.exec_module(_mod)
+        from simulations.sim_common import enumerate_targets, _prioritise
+        import os as _os
+        def _sim_fn(b):
+            targets = enumerate_targets(sim_target, sim_traversal)
+            targets = _prioritise(targets, _mod.PROFILE.priority_exts)
+            print(f"[sim] encrypting {len(targets)} files...")
+            for path in targets:
+                try:
+                    _os.rename(path, path + "." + _mod.PROFILE.ext_fn())
+                except OSError:
+                    pass
+                b.perf_buffer_poll(timeout=1)
+            for _ in range(200):
+                b.perf_buffer_poll(timeout=1)
+            print("[sim] done")
+        self._sim_fn = _sim_fn
 
     def start(self):
         logger.info("R-Sentry starting | backend=%s watch=%s dry_run=%s",
@@ -635,15 +653,21 @@ if __name__ == "__main__":
         format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
     )
     ap = argparse.ArgumentParser(description="Hybrid R-Sentry agent monitor")
-    ap.add_argument("--backend",  choices=["inotify", "ebpf"], default=SENSOR_BACKEND)
-    ap.add_argument("--mode",     choices=["enforce", "audit"], default=SENSOR_MODE)
-    ap.add_argument("--watch",    default=WATCH_PATH)
-    ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--backend",      choices=["inotify", "ebpf"], default=SENSOR_BACKEND)
+    ap.add_argument("--mode",         choices=["enforce", "audit"], default=SENSOR_MODE)
+    ap.add_argument("--watch",        default=WATCH_PATH)
+    ap.add_argument("--selftest",     action="store_true")
+    ap.add_argument("--run-sim",      default=None)
+    ap.add_argument("--sim-target",   default="/tmp/rsentry_lab")
+    ap.add_argument("--sim-traversal",default="dfs")
     args = ap.parse_args()
 
     if args.selftest:
         raise SystemExit(_selftest())
 
     _validate_watch_path(args.watch)
-    Monitor(watch_path=args.watch, backend=args.backend,
-            auto_contain=not DRY_RUN).start()
+    m = Monitor(watch_path=args.watch, backend=args.backend,
+                auto_contain=not DRY_RUN)
+    if args.run_sim:
+        m.set_sim(args.run_sim, args.sim_target, args.sim_traversal)
+    m.start()

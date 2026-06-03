@@ -43,7 +43,7 @@ from typing import Callable, Dict, List, Optional, Set, Tuple
 IGNORE_COMMS: Set[str] = {
     "Xorg", "gnome-shell", "nautilus", "systemd", "systemd-journal", "systemd-resolve", "systemd-network", "dockerd", "containerd",
     "redis-server", "postgres", "celery", "uvicorn",
-    "git", "cargo", "rsync", "make", "gcc", "cc1", "ld", "NetworkManager", "nm-dispatcher", "StreamTrans", "runc", "glean.dispatche", "containerd-shim", "x-www-browser", "firefox", "firefox-esr", "chrome", "chromium", "dpkg", "apt", "apt-get", "Cache2 I/O",
+    "git", "cargo", "rsync", "make", "gcc", "cc1", "ld", "NetworkManager", "nm-dispatcher", "StreamTrans", "runc", "glean.dispatche", "containerd-shim", "x-www-browser", "firefox", "firefox-esr", "chrome", "chromium", "dpkg", "apt", "apt-get", "Cache2 I/O", "containerd", "dockerd", "docker",
 }
 
 # Extensions that look like encryption output
@@ -205,24 +205,23 @@ class DetectionEngine:
         dst_path: str,
         ts: float,
         extra: Optional[dict] = None,
+        lineage_score: float = 0.0,
+        entropy_delta: float = 0.0,
     ) -> dict:
         import datetime
         dt = datetime.datetime.fromtimestamp(ts, tz=datetime.timezone.utc)
         iso = dt.isoformat(timespec="milliseconds").replace("+00:00", "Z")
-
-        lineage_score = 0.0
-        entropy_delta = 0.0
-        if self.lineage_fn and pid > 0:
+        # Only compute if not pre-supplied
+        if lineage_score == 0.0 and self.lineage_fn and pid > 0:
             try:
                 lineage_score = float(self.lineage_fn(pid))
             except Exception:
                 pass
-        if self.entropy_fn and dst_path:
+        if entropy_delta == 0.0 and self.entropy_fn and dst_path:
             try:
                 entropy_delta = float(self.entropy_fn(dst_path))
             except Exception:
                 pass
-
         details: dict = {"sensor": "ebpf", "decided_in": "userspace"}
         if extra:
             details.update(extra)
@@ -326,9 +325,11 @@ class DetectionEngine:
         entropy_delta = 0.0
         if self.lineage_fn and pid > 0:
             try:
-                lineage_score = float(self.lineage_fn(pid))
-            except Exception:
-                pass
+                _result = self.lineage_fn(pid)
+                lineage_score = float(_result)
+                import sys as _sys
+            except Exception as _e:
+                import sys as _sys
         if self.entropy_fn and dst_path:
             try:
                 entropy_delta = float(self.entropy_fn(dst_path))
@@ -352,9 +353,9 @@ class DetectionEngine:
         evt = self._make_event(
             "PROCESS_ANOMALY", sev, pid, ppid, comm,
             src_path, dst_path, ts, extra=extra,
+            lineage_score=lineage_score,
+            entropy_delta=entropy_delta,
         )
-        evt["lineage_score"] = round(lineage_score, 2)
-        evt["entropy_delta"] = round(entropy_delta, 4)
         self._active_pids.add(pid)
         return evt
 
@@ -556,6 +557,8 @@ def run_sensor(
     emit: Optional[Callable[[dict], None]] = None,
     contain: Optional[Callable[[int, str], None]] = None,
     sim_fn: Optional[Callable] = None,
+    lineage_fn: Optional[Callable[[int], float]] = None,
+    entropy_fn: Optional[Callable[[str], float]] = None,
 ) -> None:
     """
     Load BPF probes and run the detection loop.
@@ -575,7 +578,6 @@ def run_sensor(
           f"threshold={threshold} window={window_seconds}s")
     print(f"[ebpf] watch={watch_dirs}")
     print(f"[ebpf] prevention={'inline-LSM-deny' if (enforce and lsm_active) else 'SIGSTOP-fallback'}")
-
     engine = DetectionEngine(
         host_id            = host_id,
         watch_dirs         = watch_dirs,
@@ -584,6 +586,8 @@ def run_sensor(
         window_seconds     = window_seconds,
         self_pid           = 0 if sim_fn is not None else os.getpid(),
         ignore_comms       = IGNORE_COMMS,
+        lineage_fn         = lineage_fn,
+        entropy_fn         = entropy_fn,
     )
 
     # Enable syscall tracepoints (may be disabled by default on some kernels)
@@ -611,8 +615,6 @@ def run_sensor(
         if not oldname or not newname:
             return
         event = engine.observe_rename(pid, ev.ppid, comm, oldname, newname, ts=ts)
-        if event is None and ev.count >= engine.velocity_threshold:
-            event = engine.observe_kernel_burst(pid, ev.ppid, comm, ev.count, ts)
         if event:
             _emit(event)
             if enforce and pid > 0:
