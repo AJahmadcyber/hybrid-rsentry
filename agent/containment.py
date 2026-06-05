@@ -191,7 +191,7 @@ def _iptables_drop(pid: int) -> Optional[str]:
     if uid == 0:
         logger.warning("Skipping iptables DROP for uid=0 — would block agent")
         return None
-    rule = f"-m owner --uid-owner {uid} -j DROP"
+    # rule unused — cmd built directly below
     cmd = ["iptables", "-I", "OUTPUT", "1", "-m", "owner",
            "--uid-owner", str(uid), "-j", "DROP"]
 

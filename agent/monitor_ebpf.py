@@ -174,7 +174,7 @@ class DetectionEngine:
         if suffix in _ENC_SUFFIXES:
             return True
         # Random-looking extension: 8-16 alphanumeric chars, no vowels pattern
-        bn = Path(path).stem
+        # bn unused — ext check sufficient
         ext = Path(path).suffix.lstrip(".")
         if 8 <= len(ext) <= 16 and re.match(r'^[a-zA-Z0-9]+$', ext):
             return True
