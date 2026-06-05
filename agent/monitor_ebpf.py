@@ -473,99 +473,114 @@ def seed_canaries(
 # ---------------------------------------------------------------------------
 
 def build_bpf(enforce: bool = True, lsm: bool = False) -> str:
-    """Generate BPF C source for the two kernel probes."""
-    deny_action = "return -EPERM;" if (enforce and lsm) else "return 0;"
+    """
+    Full kernel-space integration:
+    - TRACEPOINT: captures all renames system-wide
+    - Velocity map: kernel blocks burst renames in nanoseconds
+    - Canary inode map: kernel blocks canary touches instantly
+    - Write monitor: detects silent in-place encryption
+    - LSM hook: enforces all blocks without userspace roundtrip
+    """
     return f"""
 #include <uapi/linux/ptrace.h>
 #include <linux/fs.h>
 #include <linux/sched.h>
 
-// Per-PID rename velocity counter (sliding window approximation)
-BPF_HASH(rename_count, u32, u64);
-BPF_HASH(rename_ts,    u32, u64);
+BPF_HASH(rename_count,  u32, u64);
+BPF_HASH(rename_ts,     u32, u64);
+BPF_HASH(canary_inodes, u64, u8);
+BPF_HASH(blocked_pids,  u32, u8);
+BPF_HASH(write_count,   u32, u64);
+BPF_HASH(write_ts,      u32, u64);
 BPF_PERF_OUTPUT(rename_events);
 BPF_PERF_OUTPUT(write_events);
 
-#define VELOCITY_THRESHOLD 3
-#define WINDOW_NS (3ULL * 1000000000ULL)
+#define VELOCITY_THRESHOLD  3
+#define WINDOW_NS          (3ULL * 1000000000ULL)
+#define WRITE_BURST_THRESH  50
+#define WRITE_WINDOW_NS    (5ULL * 1000000000ULL)
 
 struct rename_event_t {{
-    u32 pid;
-    u32 ppid;
+    u32 pid; u32 ppid;
     char comm[16];
-    u64 count;
-    u64 ts;
+    u64 count; u64 ts;
+    u8  canary_hit;
+    u8  kernel_blocked;
     char oldname[128];
     char newname[128];
 }};
-
 struct write_event_t {{
-    u32 pid;
-    u32 ppid;
+    u32 pid; u32 ppid;
     char comm[16];
-    u64 inode;
-    u64 ts;
+    u64 inode; u64 ts; u64 write_count;
 }};
 
-static inline int __handle_rename(void *ctx, const char __user *oldpath, const char __user *newpath) {{
+static inline int __handle_rename(void *ctx,
+    const char __user *oldpath, const char __user *newpath) {{
     u32 pid = bpf_get_current_pid_tgid() >> 32;
     u64 ts  = bpf_ktime_get_ns();
-
     u64 *last = rename_ts.lookup(&pid);
     u64 *cnt  = rename_count.lookup(&pid);
     u64 new_cnt = 1;
-
-    if (last && cnt && (ts - *last) < WINDOW_NS) {{
+    if (last && cnt && (ts - *last) < WINDOW_NS)
         new_cnt = *cnt + 1;
-    }}
     rename_count.update(&pid, &new_cnt);
     rename_ts.update(&pid, &ts);
-
+    {"u8 one = 1; if (new_cnt >= VELOCITY_THRESHOLD) {{ blocked_pids.update(&pid, &one); }}" if (enforce and lsm) else ""}
     struct rename_event_t ev = {{0}};
-    ev.pid   = pid;
-    ev.ppid  = (u32)(bpf_get_current_pid_tgid() & 0xFFFFFFFF);
-    ev.ts    = ts;
-    ev.count = new_cnt;
+    ev.pid  = pid;
+    ev.ppid = (u32)(bpf_get_current_pid_tgid() & 0xFFFFFFFF);
+    ev.ts   = ts; ev.count = new_cnt;
     bpf_get_current_comm(&ev.comm, sizeof(ev.comm));
     bpf_probe_read_user_str(&ev.oldname, sizeof(ev.oldname), oldpath);
     bpf_probe_read_user_str(&ev.newname, sizeof(ev.newname), newpath);
     rename_events.perf_submit(ctx, &ev, sizeof(ev));
-
-    if (new_cnt >= VELOCITY_THRESHOLD) {{
-        u64 zero = 0;
-        rename_count.update(&pid, &zero);
-    }}
     return 0;
 }}
-
-TRACEPOINT_PROBE(syscalls, sys_enter_rename) {{
-    return __handle_rename(args, args->oldname, args->newname);
-}}
-
-TRACEPOINT_PROBE(syscalls, sys_enter_renameat) {{
-    return __handle_rename(args, args->oldname, args->newname);
-}}
-
-TRACEPOINT_PROBE(syscalls, sys_enter_renameat2) {{
-    return __handle_rename(args, args->oldname, args->newname);
-}}
+TRACEPOINT_PROBE(syscalls, sys_enter_rename)    {{ return __handle_rename(args, args->oldname, args->newname); }}
+TRACEPOINT_PROBE(syscalls, sys_enter_renameat)  {{ return __handle_rename(args, args->oldname, args->newname); }}
+TRACEPOINT_PROBE(syscalls, sys_enter_renameat2) {{ return __handle_rename(args, args->oldname, args->newname); }}
 
 int kprobe__vfs_write(struct pt_regs *ctx, struct file *file) {{
     u32 pid = bpf_get_current_pid_tgid() >> 32;
     u64 ts  = bpf_ktime_get_ns();
+    u64 *last = write_ts.lookup(&pid);
+    u64 *cnt  = write_count.lookup(&pid);
+    u64 new_cnt = 1;
+    if (last && cnt && (ts - *last) < WRITE_WINDOW_NS)
+        new_cnt = *cnt + 1;
+    write_count.update(&pid, &new_cnt);
+    write_ts.update(&pid, &ts);
     struct write_event_t ev = {{0}};
-    ev.pid   = pid;
-    ev.ts    = ts;
-    ev.inode = file->f_inode->i_ino;
+    ev.pid = pid;
+    ev.ppid = (u32)(bpf_get_current_pid_tgid() & 0xFFFFFFFF);
+    ev.ts = ts; ev.inode = file->f_inode->i_ino;
+    ev.write_count = new_cnt;
     bpf_get_current_comm(&ev.comm, sizeof(ev.comm));
     write_events.perf_submit(ctx, &ev, sizeof(ev));
     return 0;
 }}
 
-{"// LSM inline block enabled" if lsm else "// LSM inline block disabled"}
-{"// -EPERM on rename" if (enforce and lsm) else ""}
+{"" if not (enforce and lsm) else """
+LSM_PROBE(path_rename,
+          const struct path *old_dir, struct dentry *old_dentry,
+          const struct path *new_dir, struct dentry *new_dentry) {{
+    u32 pid = bpf_get_current_pid_tgid() >> 32;
+    u8 *blocked = blocked_pids.lookup(&pid);
+    if (blocked && *blocked) return -EPERM;
+    if (old_dentry && old_dentry->d_inode) {{
+        u64 inode = old_dentry->d_inode->i_ino;
+        u8 *is_canary = canary_inodes.lookup(&inode);
+        if (is_canary) {{
+            u8 one = 1;
+            blocked_pids.update(&pid, &one);
+            return -EPERM;
+        }}
+    }}
+    return 0;
+}}
+"""}
 """
-
 
 # ---------------------------------------------------------------------------
 # run_sensor — live eBPF loop (requires root + BCC)
@@ -602,6 +617,7 @@ def run_sensor(
           f"threshold={threshold} window={window_seconds}s")
     print(f"[ebpf] watch={watch_dirs}")
     print(f"[ebpf] prevention={'inline-LSM-deny' if (enforce and lsm_active) else 'SIGSTOP-fallback'}")
+
     engine = DetectionEngine(
         host_id            = host_id,
         watch_dirs         = watch_dirs,
@@ -624,6 +640,20 @@ def run_sensor(
             pass
     src = build_bpf(enforce=enforce, lsm=lsm_active)
     b   = BPF(text=src)
+
+    # Register canary inodes in BPF map AFTER BPF load
+    if enforce and lsm_active and canary_paths:
+        _registered = 0
+        for _cp in canary_paths:
+            try:
+                _inode = os.stat(_cp).st_ino
+                b["canary_inodes"][b["canary_inodes"].Key(_inode)] = \
+                    b["canary_inodes"].Leaf(1)
+                _registered += 1
+            except Exception:
+                pass
+        print(f"[ebpf] {_registered} canary inodes registered in LSM map")
+
 
     _emit    = emit    or (lambda e: print(e))
     _contain = contain or (lambda pid, comm: os.kill(pid, 19))  # SIGSTOP
@@ -689,9 +719,28 @@ def run_sensor(
             return
         event = engine.observe_rename(pid, ev.ppid, comm, oldname, newname, ts=ts)
         if event:
-            # ── FAST PATH: containment fires immediately ──────────────
+            # ── FAST PATH: canary → LSM block + SIGSTOP inline ───────
             if enforce and pid > 0:
-                _contain_q.put_nowait((pid, comm))
+                if event.get("event_type") == "CANARY_TOUCHED":
+                    # 1. Arm PID in BPF map → kernel blocks ALL future renames
+                    try:
+                        b["blocked_pids"][b["blocked_pids"].Key(pid)] =                             b["blocked_pids"].Leaf(1)
+                    except Exception:
+                        pass
+                    # 2. SIGSTOP as backup
+                    try:
+                        import os as _os
+                        _os.kill(pid, 19)
+                    except OSError:
+                        pass
+                    _contain_q.put_nowait((pid, comm))
+                else:
+                    # Velocity burst: arm in BPF map + SIGSTOP
+                    try:
+                        b["blocked_pids"][b["blocked_pids"].Key(pid)] =                             b["blocked_pids"].Leaf(1)
+                    except Exception:
+                        pass
+                    _contain_q.put_nowait((pid, comm))
             # ── ASYNC PATH: enrich then emit (non-blocking) ───────────
             try:
                 _score_q.put_nowait((event, pid, newname))

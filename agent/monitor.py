@@ -28,6 +28,13 @@ import sys
 import threading
 import time
 from pathlib import Path
+
+# Auto-load .env from project root
+try:
+    from dotenv import load_dotenv
+    load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env")
+except ImportError:
+    pass
 from typing import Callable, List, Optional
 
 logger = logging.getLogger(__name__)
