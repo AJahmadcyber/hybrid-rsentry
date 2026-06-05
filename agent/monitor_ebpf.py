@@ -735,13 +735,20 @@ int kprobe__vfs_write(struct pt_regs *ctx, struct file *file) {{
 // ── Execve handler ────────────────────────────────────────────────────────
 TRACEPOINT_PROBE(syscalls, sys_enter_execve) {{
     u32 pid  = bpf_get_current_pid_tgid() >> 32;
-    u32 ppid = (u32)(bpf_get_current_pid_tgid() & 0xFFFFFFFF);
     u64 ts   = bpf_ktime_get_ns();
-    struct proc_profile_t *p = proc_profiles.lookup(&ppid);
-    if (p) {{
+    // Get parent PID from task_struct
+    struct task_struct *task = (struct task_struct *)bpf_get_current_task();
+    u32 ppid = 0;
+    if (task && task->real_parent)
+        ppid = task->real_parent->tgid;
+    // Update parent profile — parent is spawning a child
+    if (ppid > 0) {{
+        struct proc_profile_t *p = proc_profiles.lookup(&ppid);
+        struct proc_profile_t newp = {{0}};
+        if (!p) {{ newp.first_op_ts = ts; p = &newp; }}
         p->child_procs++;
+        p->last_op_ts = ts;
         p->score = __calc_score(p);
-        {"u8 one = 1; if (p->score >= SCORE_BLOCK) { blocked_pids.update(&ppid, &one); }" if (enforce and lsm) else ""}
         proc_profiles.update(&ppid, p);
     }}
     return 0;
