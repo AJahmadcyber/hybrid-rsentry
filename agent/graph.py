@@ -31,18 +31,24 @@ class FilesystemGraph:
             logger.warning("Canary cleanup error: %s", exc)
 
     def _bfs_dirs(self) -> list[Path]:
-        """Return directories under root in BFS order, skipping hidden dirs."""
+        """Return directories under root in BFS order, skipping hidden dirs and symlinks."""
         dirs: list[Path] = []
+        seen: set[Path] = set()
         queue: deque[Path] = deque([self.root])
+        seen.add(self.root.resolve())
         while queue:
             current = queue.popleft()
+            dirs.append(current)
             try:
                 entries = list(current.iterdir())
             except PermissionError:
                 continue
-            subdirs = [e for e in entries if e.is_dir() and not e.name.startswith(".")]
-            dirs.append(current)
-            queue.extend(subdirs)
+            for e in entries:
+                if e.is_dir() and not e.is_symlink() and not e.name.startswith("."):
+                    resolved = e.resolve()
+                    if resolved not in seen:
+                        seen.add(resolved)
+                        queue.append(e)
         return dirs
 
     def place_canaries(self, strategy: str = "bfs") -> list[Path]:
@@ -68,4 +74,4 @@ class FilesystemGraph:
     def is_canary(self, path: str) -> bool:
         """Return True if the path matches the canary file naming convention."""
         name = Path(path).name
-        return name.startswith(("AAA_", "aaa_", "ZZZ_", "zzz_")) and name.endswith(CANARY_SUFFIX)
+        return name.startswith(("AAA_", "aaa_", "ZZZ_", "zzz_"))
