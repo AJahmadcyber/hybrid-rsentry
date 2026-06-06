@@ -53,9 +53,11 @@ export default function DetailFlyout({ alert, liveEvent, onClose, onRefresh }) {
   useEffect(() => {
     if (!alert) { setEvidence(null); return; }
     setEvidence(null);
-    getAlertEvidence(alert.id)
+    const controller = new AbortController();
+    getAlertEvidence(alert.id, controller.signal)
       .then(r => setEvidence(r.data))
-      .catch(() => setEvidence([]));
+      .catch(err => { if (!controller.signal.aborted) setEvidence([]); });
+    return () => controller.abort();
   }, [alert?.id]);
 
   if (!alert) {
