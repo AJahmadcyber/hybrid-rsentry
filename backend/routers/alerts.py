@@ -80,9 +80,15 @@ async def list_alerts_with_events(
     if acknowledged is not None:
         stmt = stmt.where(Alert.acknowledged == acknowledged)
     if date_from:
-        stmt = stmt.where(Alert.created_at >= date_from)
+        try:
+            stmt = stmt.where(Alert.created_at >= datetime.fromisoformat(date_from))
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Invalid date_from format, expected ISO 8601")
     if date_to:
-        stmt = stmt.where(Alert.created_at <= date_to)
+        try:
+            stmt = stmt.where(Alert.created_at <= datetime.fromisoformat(date_to))
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Invalid date_to format, expected ISO 8601")
 
     rows = (await db.execute(stmt)).all()
     result = []
