@@ -53,8 +53,8 @@ class Host(Base):
     is_contained = Column(Boolean, default=False)
     risk_score = Column(Float, default=0.0)
 
-    events = relationship("Event", back_populates="host", lazy="dynamic")
-    alerts = relationship("Alert", back_populates="host", lazy="dynamic")
+    events = relationship("Event", back_populates="host", lazy="write_only")
+    alerts = relationship("Alert", back_populates="host", lazy="write_only")
 
 
 class Event(Base):
@@ -90,7 +90,7 @@ class Alert(Base):
 
     event = relationship("Event", back_populates="alert")
     host = relationship("Host", back_populates="alerts")
-    evidence = relationship("Evidence", back_populates="alert", lazy="dynamic")
+    evidence = relationship("Evidence", back_populates="alert", lazy="write_only")
 
 
 class Evidence(Base):
