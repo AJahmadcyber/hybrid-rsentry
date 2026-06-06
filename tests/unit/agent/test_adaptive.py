@@ -2,10 +2,8 @@
 tests/unit/agent/test_adaptive.py
 Unit tests for agent/adaptive.py — MarkovRepositioner
 """
-import pytest
-import numpy as np
 from unittest.mock import MagicMock
-from agent.adaptive import MarkovRepositioner, REPOSITION_THRESHOLD, MIN_OBSERVATIONS
+from agent.adaptive import MarkovRepositioner
 
 class TestObserve:
     def test_adds_state(self):

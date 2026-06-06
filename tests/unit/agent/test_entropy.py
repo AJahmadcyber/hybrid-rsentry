@@ -2,12 +2,9 @@
 tests/unit/agent/test_entropy.py
 Unit tests for agent/entropy.py
 """
-import pytest
 import os
-from unittest.mock import MagicMock
 from agent.entropy import (
     _shannon_entropy, EntropyRecord, EntropyEngine,
-    ENTROPY_SPIKE_THRESHOLD, HIGH_ENTROPY_ABSOLUTE,
 )
 
 class TestShannonEntropy:

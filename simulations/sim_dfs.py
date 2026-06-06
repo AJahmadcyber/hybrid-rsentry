@@ -6,7 +6,6 @@ No real encryption. No real malware. Safe for testing only.
 import argparse
 import os
 import random
-import sys
 import time
 from pathlib import Path
 

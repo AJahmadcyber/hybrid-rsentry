@@ -24,7 +24,7 @@ from typing import List, Optional
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from agent.monitor_ebpf import DetectionEngine, seed_canaries
-from simulations.sim_common import Profile, populate_corpus, enumerate_targets, _prioritise
+from simulations.sim_common import populate_corpus, enumerate_targets, _prioritise
 from simulations.sim_lockbit import PROFILE as LOCKBIT_PROFILE
 
 HOST = "00000000-0000-0000-0000-000000000001"

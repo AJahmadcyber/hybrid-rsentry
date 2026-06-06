@@ -12,7 +12,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from sqlalchemy.pool import NullPool
 
-from backend.models.schemas import Alert, Event, Host, Severity
+from backend.models.schemas import Alert, Host, Severity
 from backend.services import ai_analyst
 
 logger = logging.getLogger(__name__)

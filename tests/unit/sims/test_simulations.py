@@ -2,7 +2,7 @@
 tests/unit/sims/test_simulations.py
 Safety and correctness tests for simulation scripts
 """
-import pytest, inspect
+import inspect
 import simulations.sim_dfs as sim_dfs
 import simulations.sim_random as sim_random
 import simulations.sim_depth as sim_depth
@@ -23,7 +23,6 @@ class TestSafety:
         for m in [sim_dfs, sim_random, sim_depth]:
             assert "agent.monitor" not in inspect.getsource(m)
     def test_no_canary_files_touched(self):
-        import re
         for m in [sim_dfs, sim_random, sim_depth]:
             src = inspect.getsource(m)
             # Check no code actually opens/writes AAA_ files (comments allowed)

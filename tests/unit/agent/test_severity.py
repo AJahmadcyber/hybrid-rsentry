@@ -2,9 +2,9 @@
 tests/unit/agent/test_severity.py
 Severity classification tests
 """
-import pytest, os
+import os
 from unittest.mock import MagicMock, patch
-from agent.entropy import EntropyEngine, _shannon_entropy
+from agent.entropy import EntropyEngine
 from agent.lineage import score_for_event, score_process
 
 class TestEntropySeverity:

@@ -3,11 +3,13 @@ target-version = "py313"
 line-length = 120
 
 [tool.ruff.lint]
-select = ["F", "E", "W"]
+# F-series only: unused imports (F401), undefined names (F811), unused vars (F841)
+# E/W style rules excluded — the codebase uses inline ifs, lambdas, and multi-imports
+# by design (agent hot-paths, eBPF fallback guards).
+select = ["F"]
 ignore = [
-    "E501",  # line too long — handled by formatter separately
-    "E402",  # module-level import not at top (needed for conditional imports)
-    "F403",  # star imports (used in some agent modules)
+    "F403",  # star imports — used in some agent compatibility shims
+    "F405",  # may be undefined from star import
 ]
 exclude = [
     "venv/",

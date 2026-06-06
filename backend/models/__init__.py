@@ -3,3 +3,9 @@ from backend.models.schemas import (
     Host, Event, Alert, Evidence,
     EventCreate, AlertCreate, EvidenceCreate,
 )
+
+__all__ = [
+    "Base", "get_db", "engine",
+    "Host", "Event", "Alert", "Evidence",
+    "EventCreate", "AlertCreate", "EvidenceCreate",
+]

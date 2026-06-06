@@ -12,8 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.models.database import get_db
 from backend.models.schemas import (
     Alert, Event, Host,
-    EventCreate, EventResponse, AlertResponse,
-    Severity, EventType,
+    EventCreate, EventResponse, Severity, EventType,
 )
 from backend.workers.tasks import (
     push_alert_ws, push_event_ws, update_host_risk,

@@ -2,13 +2,12 @@
 tests/unit/agent/test_lineage.py
 Unit tests for agent/lineage.py
 """
-import pytest, os
-from unittest.mock import MagicMock, patch
+import os
+from unittest.mock import MagicMock
 import psutil
 from agent.lineage import (
     ProcessLineage, _sha256_of_exe, _collect_ancestors,
-    score_process, score_for_event,
-    WEIGHT_SUSPICIOUS_PARENT, WEIGHT_SUSPICIOUS_PATH, WEIGHT_DEEP_ANCESTRY,
+    score_for_event,
 )
 
 class TestProcessLineage:

@@ -127,7 +127,7 @@ def _call_with_fallback(clients: list, prompt: str) -> dict:
             continue  # provider not configured — skip silently
         try:
             return _call_nvidia(client, prompt)
-        except AuthenticationError as e:
+        except AuthenticationError:
             # AUTH_ERROR = مشكلة في الـ key، نوقف فوراً ما نكمل
             logger.error("Client %d auth failed — invalid key, stopping fallback", i + 1)
             raise

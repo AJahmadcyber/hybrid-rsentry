@@ -26,7 +26,7 @@ jobs:
         run: pip install ruff
 
       - name: Run ruff
-        run: ruff check . --select F,E,W --ignore E501
+        run: ruff check .
 
   # ── Unit tests + coverage ────────────────────────────────────────────────────
   unit-tests:
