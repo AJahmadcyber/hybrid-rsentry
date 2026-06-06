@@ -114,6 +114,11 @@ class DetectionEngine:
         if canary_paths:
             self.register_canaries(canary_paths)
 
+        # Per-instance write tracking (must NOT be class-level — selftests
+        # create 15 instances and class-level dicts would share state)
+        self._inode_path_cache: dict = {}
+        self._write_burst: dict = {}
+
     # ------------------------------------------------------------------
     # Canary registration
     # ------------------------------------------------------------------
@@ -381,10 +386,8 @@ class DetectionEngine:
         self._active_pids.add(pid)
         return evt
 
-    # inode → path mapping for write monitoring
-    _inode_path_cache: dict = {}
-    # PID write burst tracking for in-place encryption detection
-    _write_burst: dict = {}  # pid → {"count": int, "ts": float, "inodes": set}
+    # inode → path mapping for write monitoring (instance var, see __init__)
+    # PID write burst tracking for in-place encryption detection (instance var)
     _WRITE_BURST_THRESHOLD = 10   # 10 writes
     _WRITE_BURST_WINDOW    = 2.0  # in 2 seconds
     _ENTROPY_THRESHOLD     = 7.0  # bits — encrypted content
