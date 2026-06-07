@@ -67,25 +67,6 @@ const NODES = [
   },
 ];
 
-// Layout: rows of node IDs
-const LAYOUT = [
-  ['file-write', 'entropy', 'lineage'],
-  ['combined', 'sigstop'],
-  ['ai', 'dashboard'],
-];
-
-// SVG connector lines between nodes (approximate)
-const SVG_CONNECTORS = [
-  // Row 0 horizontals
-  { id: 'c1', x1: 160, y1: 80,  x2: 340, y2: 80  },
-  { id: 'c2', x1: 500, y1: 80,  x2: 680, y2: 80  },
-  // Row 0 → Row 1 vertical drops
-  { id: 'c3', x1: 340, y1: 120, x2: 240, y2: 240 },
-  { id: 'c4', x1: 580, y1: 120, x2: 380, y2: 240 },
-  // Row 1 → Row 2
-  { id: 'c5', x1: 240, y1: 320, x2: 160, y2: 400 },
-  { id: 'c6', x1: 380, y1: 320, x2: 480, y2: 400 },
-];
 
 function HexNode({ node, index }) {
   const [hovered, setHovered] = useState(false);
