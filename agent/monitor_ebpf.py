@@ -723,6 +723,30 @@ LSM_PROBE(bprm_check_security, struct linux_binprm *bprm) {
 }
 """
 
+    # Feature 5: per-PID per-CPU rate limiter. Returns 1 (throttle) when a PID
+    # exceeds RATE_LIMIT events within the current millisecond window.
+    _rate_helper = """
+static inline int __rate_limited(u32 pid, u64 ts) {
+    u64 ms = ts / 1000000ULL;
+    struct rate_t *r = rate_state.lookup(&pid);
+    if (!r) {
+        struct rate_t nr = {};
+        nr.win_ms = ms; nr.count = 1;
+        rate_state.update(&pid, &nr);
+        return 0;
+    }
+    if (r->win_ms != ms) {
+        r->win_ms = ms;
+        r->count = 1;
+        return 0;
+    }
+    r->count += 1;
+    if (r->count > RATE_LIMIT) return 1;
+    return 0;
+}
+"""
+    _rl_check = "if (__rate_limited(pid, ts)) return 0;"
+
     # Feature 4: kernel-space substring matcher for backup-destruction tooling.
     # Scans a 64-byte buffer for vssadmin / bcdedit / wbadmin / shadowcop(y).
     _kw_matcher = """
@@ -778,6 +802,11 @@ BPF_HASH(write_count,   u32, u64,  10000);
 struct woff_t {{ u64 last_end; u64 nonseq; }};
 BPF_HASH(write_offset,  u64, struct woff_t, 20000);
 
+// Feature 5: per-PID per-CPU rate limiting. A PERCPU map needs no spinlock on
+// the hot path; we throttle a PID that floods >RATE_LIMIT events in one ms.
+struct rate_t {{ u64 win_ms; u64 count; }};
+BPF_PERCPU_HASH(rate_state, u32, struct rate_t, 10000);
+
 // ── Process behavioral profile ───────────────────────────────────────────
 struct proc_profile_t {{
     u64 files_opened;
@@ -809,6 +838,7 @@ BPF_PERF_OUTPUT(exec_events);
 #define SCORE_BLOCK          70
 #define SCORE_ALERT          50
 #define NONSEQ_THRESH         5
+#define RATE_LIMIT          500
 
 struct rename_event_t {{
     u32 pid; u32 ppid; char comm[16];
@@ -833,6 +863,8 @@ struct exec_event_t {{
     char arg[64];
 }};
 
+// Feature 5: per-PID per-CPU rate limiter (inserted top-level).
+{_rate_helper}
 // Feature 4: backup-destruction keyword matcher (inserted top-level).
 {_kw_matcher}
 
@@ -864,6 +896,7 @@ static inline int __handle_rename(void *ctx,
     const char __user *oldpath, const char __user *newpath) {{
     u32 pid = bpf_get_current_pid_tgid() >> 32;
     u64 ts  = bpf_ktime_get_ns();
+    {_rl_check}
 
     u64 *last = rename_ts.lookup(&pid);
     u64 *cnt  = rename_count.lookup(&pid);
@@ -904,6 +937,7 @@ TRACEPOINT_PROBE(syscalls, sys_enter_renameat2) {{ return __handle_rename(args, 
 static inline int __handle_unlink(void *ctx) {{
     u32 pid = bpf_get_current_pid_tgid() >> 32;
     u64 ts  = bpf_ktime_get_ns();
+    {_rl_check}
     struct proc_profile_t *p = proc_profiles.lookup(&pid);
     struct proc_profile_t newp = {{0}};
     if (!p) {{ newp.first_op_ts = ts; p = &newp; }}
@@ -933,6 +967,7 @@ TRACEPOINT_PROBE(syscalls, sys_enter_unlinkat) {{ return __handle_unlink(args); 
 TRACEPOINT_PROBE(syscalls, sys_enter_openat) {{
     u32 pid = bpf_get_current_pid_tgid() >> 32;
     u64 ts  = bpf_ktime_get_ns();
+    {_rl_check}
     struct proc_profile_t *p = proc_profiles.lookup(&pid);
     struct proc_profile_t newp = {{0}};
     if (!p) {{ newp.first_op_ts = ts; p = &newp; }}
@@ -953,6 +988,7 @@ int kprobe__vfs_write(struct pt_regs *ctx, struct file *file) {{
     u32 pid = bpf_get_current_pid_tgid() >> 32;
     if (pid < 100) return 0;
     u64 ts  = bpf_ktime_get_ns();
+    {_rl_check}
     struct proc_profile_t *p = proc_profiles.lookup(&pid);
     struct proc_profile_t newp = {{0}};
     if (!p) {{ newp.first_op_ts = ts; p = &newp; }}
@@ -1663,6 +1699,17 @@ def _selftest() -> int:
     _src4a = build_bpf(enforce=False, lsm=False)
     check("audit build still detects (matcher present)", "__is_backup_destruct" in _src4a)
     check("audit build does not send SIGKILL", "bpf_send_signal(SIGKILL)" not in _src4a)
+
+    # ── Feature 5: per-PID per-CPU rate limiting ─────────────────────
+    print("per-PID rate limiting (kernel map + helper present)")
+    _src5 = build_bpf(enforce=True, lsm=True)
+    check("declares BPF_PERCPU_HASH rate map", "BPF_PERCPU_HASH(rate_state" in _src5)
+    check("defines RATE_LIMIT 500", "#define RATE_LIMIT" in _src5 and "500" in _src5)
+    check("defines __rate_limited helper", "__rate_limited" in _src5)
+    check("rate check uses per-ms window", "ts / 1000000ULL" in _src5)
+    # Every hot-path handler must gate on the limiter.
+    check("rate check wired into >=4 handlers",
+          _src5.count("if (__rate_limited(pid, ts)) return 0;") >= 4)
 
     # ── BPF source generation ─────────────────────────────────────────
     print("BPF source generation (all variants compile to text)")
