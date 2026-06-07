@@ -307,7 +307,7 @@ def score_for_event(pid: int) -> dict:
         # الـ process ماتت قبل ما نحللها — هاذا مشبوه بحد ذاته
         logger.warning("PID %d not found — process may have exited after event (suspicious)", pid)
         return {
-            "lineage_score": 40.0,  # نعطيها score متوسط لأن الاختفاء السريع مشبوه
+            "lineage_score": 25.0,  # process exited before analysis — suspicious but not definitive
             "process_name": "exited_process",
             "exe": "",
             "ancestors": [],
