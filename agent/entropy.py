@@ -5,7 +5,7 @@ Uses scipy, numpy, pandas for computation.
 """
 import time
 import logging
-from collections import deque
+from collections import deque, OrderedDict
 from pathlib import Path
 from typing import Optional
 
@@ -91,17 +91,17 @@ class EntropyEngine:
         self.spike_threshold = spike_threshold
         self.abs_threshold = abs_threshold
         self.window = window
-        self._records: dict[str, EntropyRecord] = {}
+        self._records: OrderedDict[str, EntropyRecord] = OrderedDict()
         self.alert_callback = alert_callback  # callable(path, delta, entropy)
 
     def _get_record(self, path: str) -> EntropyRecord:
         if path not in self._records:
-            # لو وصلنا للحد الأقصى، نشيل أقدم ملف
             if len(self._records) >= self.MAX_TRACKED_FILES:
-                oldest = next(iter(self._records))
-                del self._records[oldest]
-                logger.debug("Entropy records full — evicted oldest: %s", oldest)
+                oldest, _ = self._records.popitem(last=False)
+                logger.debug("Entropy records full — evicted LRU: %s", oldest)
             self._records[path] = EntropyRecord(path, self.window)
+        else:
+            self._records.move_to_end(path)
         return self._records[path]
 
     def observe(self, path: str) -> Optional[dict]:
