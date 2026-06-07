@@ -15,6 +15,7 @@ const AI_TRIGGER_SEVERITIES = new Set(['CRITICAL', 'HIGH', 'MEDIUM']);
 
 export default function App() {
   const [page, setPage] = useState('dashboard');
+  const [alertBadgeCount, setAlertBadgeCount] = useState(0);
   const [liveAlert, setLiveAlert] = useState(null);
   const [liveEvent, setLiveEvent] = useState(null);
 
@@ -32,7 +33,7 @@ export default function App() {
   const [latestAiResult, setLatestAiResult] = useState(null);
 
   const handleWsMessage = useCallback((msg) => {
-    if (msg.type === 'new_alert') setLiveAlert(msg);
+    if (msg.type === 'new_alert') { setLiveAlert(msg); setAlertBadgeCount(n => n + 1); }
     if (msg.type === 'new_event') {
       setLiveEvent(msg);
       if (AI_TRIGGER_SEVERITIES.has(msg.severity)) {
@@ -122,11 +123,14 @@ export default function App() {
     }
   };
 
-  const activeAlertCount = liveAlert ? 1 : 0;
+  const handleNavigate = useCallback((p) => {
+    setPage(p);
+    if (p === 'alerts') setAlertBadgeCount(0);
+  }, []);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg)', overflow: 'hidden' }}>
-      <TopBar activePage={page} onNavigate={setPage} connected={connected} alertCount={activeAlertCount} />
+      <TopBar activePage={page} onNavigate={handleNavigate} connected={connected} alertCount={alertBadgeCount} />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
         {renderPage()}
       </div>
