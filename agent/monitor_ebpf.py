@@ -123,6 +123,16 @@ class DetectionEngine:
         self._inode_path_cache: dict = {}
         self._write_burst: dict = {}
 
+        # Write-offset tracking for silent-encryption detection (Feature 1).
+        # pid -> {inode: last_end_offset}; consecutive non-sequential writes
+        # (offset != previous end) are the signature of in-place block-cipher
+        # rewrites that never change the file size or extension.
+        self._write_offsets: Dict[int, Dict[int, int]] = defaultdict(dict)
+        self._nonseq_count: Dict[int, int] = defaultdict(int)
+        # PIDs frozen (kernel-blocked) by a hardening rule — kept so callers
+        # can confirm a containment decision was taken.
+        self._frozen_pids: Set[int] = set()
+
     # ------------------------------------------------------------------
     # Canary registration
     # ------------------------------------------------------------------
@@ -395,6 +405,10 @@ class DetectionEngine:
     _WRITE_BURST_THRESHOLD = 10   # 10 writes
     _WRITE_BURST_WINDOW    = 2.0  # in 2 seconds
     _ENTROPY_THRESHOLD     = 7.0  # bits — encrypted content
+    # Consecutive non-sequential writes to the same inode before we call it
+    # silent encryption. Legitimate apps (editors, databases) seek too, so we
+    # require a sustained run rather than a single backward seek.
+    _NONSEQ_THRESHOLD      = 5
 
     def observe_write(
         self,
@@ -452,6 +466,68 @@ class DetectionEngine:
                 except Exception:
                     pass
         return None
+
+    def observe_write_offset(
+        self,
+        pid: int,
+        ppid: int,
+        comm: str,
+        inode: int,
+        offset: int,
+        length: int,
+        path: str,
+        ts: float,
+    ) -> Optional[dict]:
+        """
+        Feature 1 — silent-encryption detection by write-offset pattern.
+
+        Ransomware that encrypts in place (no rename, no new extension) issues a
+        read-modify-write storm whose write offsets jump around the file rather
+        than advancing sequentially. We track the expected next offset per inode
+        and count consecutive non-sequential writes. When a PID crosses
+        _NONSEQ_THRESHOLD we emit SILENT_ENCRYPTION and mark the PID frozen so
+        the caller arms the in-kernel block (the BPF side mirrors this and sets
+        blocked_pids inline; this method is the unit-testable source of truth).
+        """
+        if pid == self.self_pid:
+            return None
+        if comm in self.ignore_comms:
+            return None
+
+        per_inode = self._write_offsets[pid]
+        last_end = per_inode.get(inode)
+        per_inode[inode] = offset + length
+
+        # First write to this inode establishes the baseline — never an alert.
+        if last_end is None:
+            return None
+
+        # Sequential append/overwrite: offset lands exactly where the previous
+        # write ended. Anything else is a non-sequential (seek) write.
+        if offset == last_end:
+            self._nonseq_count[pid] = 0
+            return None
+
+        self._nonseq_count[pid] += 1
+        if self._nonseq_count[pid] < self._NONSEQ_THRESHOLD:
+            return None
+
+        # Sustained non-sequential rewrites → silent encryption.
+        self._nonseq_count[pid] = 0
+        self._frozen_pids.add(pid)
+        self._active_pids.add(pid)
+        return self._make_event(
+            "SILENT_ENCRYPTION", "HIGH", pid, ppid, comm,
+            path, path, ts,
+            extra={
+                "trigger":     "write_offset",
+                "inode":       inode,
+                "offset":      offset,
+                "length":      length,
+                "pattern":     "non_sequential",
+                "frozen_pid":  pid,
+            },
+        )
 
     def observe_kernel_burst(
         self,
@@ -577,6 +653,10 @@ BPF_HASH(rename_ts,     u32, u64,  10000);
 BPF_HASH(write_ts,      u32, u64,  10000);
 BPF_HASH(write_count,   u32, u64,  10000);
 
+// Feature 1: per-inode write-offset tracking for silent-encryption detection.
+struct woff_t {{ u64 last_end; u64 nonseq; }};
+BPF_HASH(write_offset,  u64, struct woff_t, 20000);
+
 // ── Process behavioral profile ───────────────────────────────────────────
 struct proc_profile_t {{
     u64 files_opened;
@@ -605,6 +685,7 @@ BPF_PERF_OUTPUT(behavior_events);
 #define WRITE_BURST_THRESH   50
 #define SCORE_BLOCK          70
 #define SCORE_ALERT          50
+#define NONSEQ_THRESH         5
 
 struct rename_event_t {{
     u32 pid; u32 ppid; char comm[16];
@@ -615,6 +696,7 @@ struct rename_event_t {{
 struct write_event_t {{
     u32 pid; u32 ppid; char comm[16];
     u64 inode; u64 ts; u64 write_count;
+    u64 offset; u64 length; u8 silent_enc;
 }};
 struct behavior_event_t {{
     u32 pid; u32 ppid; char comm[16];
@@ -752,6 +834,36 @@ int kprobe__vfs_write(struct pt_regs *ctx, struct file *file) {{
     {_block_on_write_score}
     proc_profiles.update(&pid, p);
 
+    // Feature 1: per-inode write-offset silent-encryption detection.
+    // In-place ransomware rewrites jump around the file (offset != prev end);
+    // a sustained run of non-sequential writes freezes the PID inline.
+    u64 _ino = file->f_inode->i_ino;
+    loff_t _off = 0;
+    bpf_probe_read_kernel(&_off, sizeof(_off), (void *)PT_REGS_PARM4(ctx));
+    u64 _cur = (u64)_off;
+    u64 _len = (u64)PT_REGS_PARM3(ctx);
+    u8 silent_enc = 0;
+    struct woff_t *wo = write_offset.lookup(&_ino);
+    if (wo) {{
+        if (_cur != wo->last_end) {{
+            wo->nonseq += 1;
+            if (wo->nonseq >= NONSEQ_THRESH) {{
+                silent_enc = 1;
+                wo->nonseq = 0;
+                u8 _one = 1;
+                blocked_pids.update(&pid, &_one);
+            }}
+        }} else {{
+            wo->nonseq = 0;
+        }}
+        wo->last_end = _cur + _len;
+    }} else {{
+        struct woff_t _nw = {{0}};
+        _nw.last_end = _cur + _len;
+        _nw.nonseq = 0;
+        write_offset.update(&_ino, &_nw);
+    }}
+
     u64 *last = write_ts.lookup(&pid);
     u64 *cnt  = write_count.lookup(&pid);
     u64 new_cnt = 1;
@@ -760,12 +872,13 @@ int kprobe__vfs_write(struct pt_regs *ctx, struct file *file) {{
     write_count.update(&pid, &new_cnt);
     write_ts.update(&pid, &ts);
     u8 *blocked = blocked_pids.lookup(&pid);
-    if (!blocked && new_cnt < WRITE_BURST_THRESH) return 0;
+    if (!blocked && new_cnt < WRITE_BURST_THRESH && !silent_enc) return 0;
     struct write_event_t ev = {{0}};
     ev.pid = pid;
     struct task_struct *_task_w = (struct task_struct *)bpf_get_current_task();
     ev.ppid = (_task_w && _task_w->real_parent) ? _task_w->real_parent->tgid : 0;
     ev.ts = ts; ev.inode = file->f_inode->i_ino; ev.write_count = new_cnt;
+    ev.offset = _cur; ev.length = _len; ev.silent_enc = silent_enc;
     bpf_get_current_comm(&ev.comm, sizeof(ev.comm));
     write_events.perf_submit(ctx, &ev, sizeof(ev));
     return 0;
@@ -987,6 +1100,31 @@ def run_sensor(
                         pass
             except Exception:
                 pass
+        # Feature 1: kernel flagged a non-sequential write storm → silent encryption.
+        # Freeze the PID immediately (block + SIGSTOP), then enrich/emit async.
+        if getattr(ev, "silent_enc", 0):
+            sevt = engine.observe_write_offset(
+                pid, ev.ppid, comm, inode,
+                getattr(ev, "offset", 0), getattr(ev, "length", 0), path, ts,
+            ) or engine._make_event(
+                "SILENT_ENCRYPTION", "HIGH", pid, ev.ppid, comm, path, path, ts,
+                extra={"trigger": "write_offset", "inode": inode,
+                       "offset": getattr(ev, "offset", 0),
+                       "length": getattr(ev, "length", 0),
+                       "pattern": "non_sequential", "decided_in": "kernel"},
+            )
+            if enforce and pid > 0:
+                try:
+                    b["blocked_pids"][b["blocked_pids"].Key(pid)] = b["blocked_pids"].Leaf(1)
+                except Exception:
+                    pass
+                _contain_q.put_nowait((pid, comm))
+            try:
+                _score_q.put_nowait((sevt, pid, path))
+            except Exception:
+                _emit(sevt)
+            return
+
         event = engine.observe_write(pid, ev.ppid, comm, inode, path, ts)
         if event:
             if enforce and pid > 0:
@@ -1272,6 +1410,40 @@ def _selftest() -> int:
         check("dry-run reports paths", len(dry) > 0)
     finally:
         shutil.rmtree(td5, ignore_errors=True)
+
+    # ── Feature 1: write-offset silent-encryption detection ───────────
+    print("write-offset silent-encryption detection")
+    engw = DetectionEngine("t", ["/tmp"], self_pid=1)
+    # Sequential append writes: offset always == previous end → never alerts.
+    seq = None
+    for off in range(0, 4096 * 8, 4096):
+        seq = engw.observe_write_offset(70, 1, "writer", 1234, off, 4096, "/tmp/f.dat", ts=float(off))
+    check("sequential writes never alert", seq is None)
+    # Non-sequential rewrites to the same inode → SILENT_ENCRYPTION after threshold.
+    enge = DetectionEngine("t", ["/tmp"], self_pid=1)
+    enge.observe_write_offset(71, 1, "locker", 9, 0, 4096, "/tmp/g.dat", ts=0.0)  # baseline
+    nonseq_evt = None
+    for i in range(1, 8):
+        # jump to a fresh offset each time (classic in-place block cipher pattern)
+        _r = enge.observe_write_offset(71, 1, "locker", 9, i * 16, 4096, "/tmp/g.dat", ts=float(i))
+        if _r is not None:
+            nonseq_evt = _r
+            break
+    check("non-sequential storm -> SILENT_ENCRYPTION",
+          nonseq_evt is not None and nonseq_evt["event_type"] == "SILENT_ENCRYPTION")
+    check("silent-encryption freezes PID", 71 in enge._frozen_pids)
+    check("silent-encryption arms active_pids", 71 in enge._active_pids)
+    check("silent-encryption HIGH severity",
+          nonseq_evt is not None and nonseq_evt["severity"] == "HIGH")
+    # Own PID and ignored comms never alert.
+    engx = DetectionEngine("t", ["/tmp"], self_pid=99)
+    rx = engx.observe_write_offset(99, 1, "monitor", 5, 100, 10, "/tmp/h", ts=1.0)
+    check("own PID write-offset ignored", rx is None)
+    # BPF source carries the offset map + kernel detection wiring.
+    _src1 = build_bpf(enforce=True, lsm=True)
+    check("bpf source declares write_offset map", "write_offset" in _src1)
+    check("bpf source defines NONSEQ_THRESH", "NONSEQ_THRESH" in _src1)
+    check("bpf source carries silent_enc flag", "silent_enc" in _src1)
 
     # ── BPF source generation ─────────────────────────────────────────
     print("BPF source generation (all variants compile to text)")
