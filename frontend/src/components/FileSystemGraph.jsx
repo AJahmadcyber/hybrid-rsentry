@@ -105,6 +105,7 @@ export default function FileSystemGraph({ highlightPath, newEvent }) {
   // ── D3 render ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (!svgRef.current || !containerRef.current || events.length === 0) return;
+    let mounted = true;
 
     const container  = containerRef.current;
     const W          = container.clientWidth  || 600;
@@ -182,14 +183,16 @@ export default function FileSystemGraph({ highlightPath, newEvent }) {
           .on('end',   (ev, d) => { if (!ev.active) sim.alphaTarget(0); d.fx = null; d.fy = null; })
       )
       .on('mouseenter', (ev, d) => {
+        if (!mounted) return;
         const rect = containerRef.current.getBoundingClientRect();
         setTooltip({ x: ev.clientX - rect.left, y: ev.clientY - rect.top, node: d });
       })
       .on('mousemove', (ev, d) => {
+        if (!mounted) return;
         const rect = containerRef.current.getBoundingClientRect();
         setTooltip({ x: ev.clientX - rect.left, y: ev.clientY - rect.top, node: d });
       })
-      .on('mouseleave', () => setTooltip(null));
+      .on('mouseleave', () => { if (mounted) setTooltip(null); });
 
     // Outer glow ring for highlighted / alert nodes
     nodeSel.append('circle')
@@ -261,7 +264,7 @@ export default function FileSystemGraph({ highlightPath, newEvent }) {
 
     sim.on('end', autoFit);
 
-    return () => { svg.interrupt(); svg.on('.zoom', null); sim.stop(); };
+    return () => { mounted = false; svg.interrupt(); svg.on('.zoom', null); sim.stop(); };
   }, [events, highlightPath]);
 
   return (
