@@ -10,8 +10,8 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688?style=flat-square&logo=fastapi)](https://fastapi.tiangolo.com)
 [![Celery](https://img.shields.io/badge/Celery-5.x-37814A?style=flat-square)](https://docs.celeryq.dev)
 [![Redis](https://img.shields.io/badge/Redis-7.x-DC382D?style=flat-square&logo=redis)](https://redis.io)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-336791?style=flat-square&logo=postgresql)](https://postgresql.org)
-[![Tests](https://img.shields.io/badge/tests-71%20passing-brightgreen?style=flat-square)](#testing)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791?style=flat-square&logo=postgresql)](https://postgresql.org)
+[![Tests](https://img.shields.io/badge/tests-182%20passing-brightgreen?style=flat-square)](#testing)
 [![Coverage](https://img.shields.io/badge/coverage-89%25-brightgreen?style=flat-square)](#testing)
 [![Version](https://img.shields.io/badge/version-v2.1.0-blue?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
@@ -283,6 +283,7 @@ hybrid-rsentry/
 │   ├── main.py                  # FastAPI app entry point
 │   ├── models/                  # SQLAlchemy ORM + Pydantic schemas
 │   ├── routers/                 # events, alerts, hosts, ws
+│   ├── migrations/              # Alembic versioned migrations (0001_initial_schema)
 │   ├── services/                # AI analyst (multi-provider fallback chain)
 │   └── workers/                 # Celery tasks
 ├── frontend/
@@ -301,7 +302,9 @@ hybrid-rsentry/
 │       └── api/                 # Axios client
 ├── landing/                     # 3D cinematic landing page (React Three Fiber + Framer Motion)
 ├── tests/
-│   ├── unit/agent/              # 71 tests — entropy, lineage, adaptive, severity (89% coverage)
+│   ├── unit/agent/              # entropy, lineage, adaptive, severity classification
+│   ├── unit/backend/            # routers, AI analyst, Celery tasks, containment pipeline
+│   ├── unit/sims/               # simulation safety and defense validation
 │   └── test_lockbit.py          # LockBit 5.0 4-metric evaluation — all targets met
 ├── simulations/                 # Attack simulation scripts
 │   ├── sim_common.py            # Shared engine (profile, corpus, run_attack, backup/restore)
@@ -326,7 +329,13 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
-71 tests covering `entropy.py`, `lineage.py`, `adaptive.py`, severity classification, and simulation safety. All tests are isolated (no live services required).
+**182 tests**, 89% coverage across `entropy.py`, `lineage.py`, `adaptive.py`, severity classification, simulation safety, API routers, AI analyst, Celery tasks, and the containment pipeline. All tests are isolated — no live services required.
+
+Run the LockBit 5.0 evaluation separately:
+```bash
+pytest tests/test_lockbit.py -v
+```
+All 4 targets pass: files-before-detection < 3, latency < 500 ms, FP = 0%, coverage = 100%.
 
 ---
 
@@ -383,10 +392,10 @@ For reporting vulnerabilities, see [SECURITY.md](SECURITY.md).
 
 Development is tracked in the **[R-Sentry Roadmap GitHub Project](https://github.com/users/Mohhudib/projects/1)**.
 
-| Milestone | Scope | Target |
+| Milestone | Scope | Status |
 |---|---|---|
-| [v2.1.0](https://github.com/Mohhudib/hybrid-rsentry/milestone/1) | CI hardening, Dependabot security fixes, eBPF Kali validation | 2026-06-15 |
-| [v2.2.0](https://github.com/Mohhudib/hybrid-rsentry/milestone/2) | Integration tests, Exception Management UI, Alembic migrations | 2026-07-31 |
+| [v2.1.0](https://github.com/Mohhudib/hybrid-rsentry/milestone/1) | eBPF Phase 3, Alembic migrations, CI/CD hardening, 182 tests | ✅ Released 2026-06-08 |
+| [v2.2.0](https://github.com/Mohhudib/hybrid-rsentry/milestone/2) | Integration tests, Exception Management UI, alert correlation engine | Target 2026-07-31 |
 
 See the [Roadmap wiki page](https://github.com/Mohhudib/hybrid-rsentry/wiki/Roadmap) for the full list of completed and planned items.
 

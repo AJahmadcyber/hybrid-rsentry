@@ -4,6 +4,20 @@ All notable changes to Hybrid R-Sentry are documented here.
 
 ---
 
+## [2.1.1] — 2026-06-08
+
+### Fixed
+
+- **eBPF IGNORE_COMMS enforcement** — `_handle_write` and `_handle_exec` in `monitor_ebpf.py` now check `comm in IGNORE_COMMS` before any flagging or containment, matching the existing guard in `_handle_behavior`. Previously, an inverted `or`-fallback in `_handle_write` fabricated `SILENT_ENCRYPTION` events for safelisted comms (including `dockerd`, `containerd`, `runc`), causing the Docker stack to be SIGKILLed during live testing. `_handle_exec` had the same inversion. Both handlers now mirror `_handle_behavior`'s early `return` pattern; detection sensitivity for non-safelisted processes is unchanged.
+
+- **Docker image — `alembic.ini` not found** — `Dockerfile.backend` now copies `alembic.ini` into the image (`COPY alembic.ini ./`). Previously the backend container crash-looped with `FileNotFoundError: /app/alembic.ini` because the file was never included in the build context. `backend/migrations/env.py` also guards `fileConfig()` with an `os.path.exists()` check so migrations survive a missing ini (defense-in-depth).
+
+- **Alembic migration path resolution** — `backend/main.py._run_migrations()` previously used a CWD-relative `Config("alembic.ini")`, which failed when uvicorn was launched from any directory other than the repo root. Migration config and `script_location` are now resolved to absolute paths derived from the project root, making startup reliable regardless of launch directory.
+
+- **Simulation import safety guard** — `tests/unit/sims/test_simulations.py` tightened the live-watchdog import guard from a plain substring match (`"agent.monitor"`) to a negative-lookahead regex (`agent\.monitor(?!_ebpf)`). The old guard incorrectly blocked the legitimate, side-effect-free `agent.monitor_ebpf` import used by the defense-validation harness in `sim_lockbit.py`.
+
+---
+
 ## [2.1.0] — 2026-06-07
 
 ### Added
