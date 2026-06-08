@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { acknowledgeAlert, analyzeAlert, containHost, getAlertEvidence } from '../api/client';
 import FileSystemGraph from './FileSystemGraph';
 import { RULE_NAME, MITRE } from '../constants/eventTypes';
@@ -27,22 +27,36 @@ function Section({ icon, title, children }) {
   );
 }
 
-export default function DetailFlyout({ alert, liveEvent, onClose, onRefresh }) {
+export default function DetailFlyout({ alert, liveEvent, liveAiResult, onClose, onRefresh }) {
   const [evidence, setEvidence] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [containing, setContaining] = useState(false);
   const [acking, setAcking] = useState(false);
   const [fsExpanded, setFsExpanded] = useState(false);
+  const [aiResult, setAiResult] = useState(null);
 
   useEffect(() => {
-    if (!alert) { setEvidence(null); return; }
+    if (!alert) { setEvidence(null); setAiResult(null); return; }
     setEvidence(null);
+    setAiResult(null);
+    setAnalyzing(false);
     const controller = new AbortController();
     getAlertEvidence(alert.id, controller.signal)
       .then(r => setEvidence(r.data))
       .catch(err => { if (!controller.signal.aborted) setEvidence([]); });
     return () => controller.abort();
   }, [alert?.id]);
+
+  // Update AI result when WebSocket delivers a matching analysis
+  useEffect(() => {
+    if (!liveAiResult || !alert || liveAiResult.risk_level === 'PENDING') return;
+    const matchesEvent = liveAiResult.event_id && liveAiResult.event_id === String(alert.event_id);
+    const matchesAlert = liveAiResult.alert_id && liveAiResult.alert_id === String(alert.id);
+    if (matchesEvent || matchesAlert) {
+      setAiResult(liveAiResult);
+      setAnalyzing(false);
+    }
+  }, [liveAiResult, alert?.id, alert?.event_id]);
 
   if (!alert) {
     return (
@@ -59,7 +73,7 @@ export default function DetailFlyout({ alert, liveEvent, onClose, onRefresh }) {
   const proc      = ev?.process_name || alert.process_name || null;
   const techList  = MITRE[ev?.event_type || ''] || [];
   const ruleName  = RULE_NAME[ev?.event_type || ''] || 'Detection Alert';
-  const ai        = alert.ai_analysis || null;
+  const ai        = aiResult || alert.ai_analysis || null;
 
   async function handleAck() {
     setAcking(true);
@@ -67,7 +81,12 @@ export default function DetailFlyout({ alert, liveEvent, onClose, onRefresh }) {
   }
   async function handleAnalyze() {
     setAnalyzing(true);
-    try { await analyzeAlert(alert.id); } finally { setAnalyzing(false); }
+    try {
+      await analyzeAlert(alert.id);
+      // Keep analyzing=true — spinner stays until liveAiResult arrives via WebSocket
+    } catch {
+      setAnalyzing(false);
+    }
   }
   async function handleContain() {
     setContaining(true);
@@ -138,12 +157,23 @@ export default function DetailFlyout({ alert, liveEvent, onClose, onRefresh }) {
 
         {/* Summary */}
         <Section icon="fa-circle-info" title="Summary">
+          {analyzing && !ai && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--accent)', fontSize: 12, marginBottom: 8 }}>
+              <div style={{ width: 12, height: 12, borderRadius: '50%', border: '2px solid var(--accent)', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }} />
+              AI analysis in progress…
+            </div>
+          )}
           <div style={{ fontSize: 12.5, lineHeight: 1.6, color: 'var(--text-2)' }}>
-            {ai?.summary || (ev ? `${ev.event_type} detected on ${alert.host_id}` : 'No summary available.')}
+            {ai?.behavior_summary || ai?.summary || (ev ? `${ev.event_type} detected on ${alert.host_id}` : 'No summary available.')}
           </div>
-          {ai?.risk_level && (
+          {ai?.risk_level && ai.risk_level !== 'PENDING' && (
             <div style={{ marginTop: 8, fontSize: 11, fontFamily: 'var(--mono)', color: SEV_COLOR[ai.risk_level] || 'var(--text-2)' }}>
-              AI Risk: {ai.risk_level}
+              AI Risk: {ai.risk_level} · {ai.threat_type}
+            </div>
+          )}
+          {ai?.recommendation && (
+            <div style={{ marginTop: 6, fontSize: 11.5, color: 'var(--text-2)' }}>
+              <span style={{ color: 'var(--accent)' }}>Rec:</span> {ai.recommendation}
             </div>
           )}
           {ai?.recommendations?.length > 0 && (

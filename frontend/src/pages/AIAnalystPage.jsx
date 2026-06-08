@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import api, { getEvents } from '../api/client';
 
 const RISK_COLORS = {
@@ -113,6 +113,14 @@ export default function AIAnalystPage({
   const pendingList = Object.values(pendingEvents || {});
   const displayAnalyses = analyses || [];
 
+  // When health result arrives via WebSocket, stop the loading spinner
+  useEffect(() => {
+    if (health && healthPendingRef.current) {
+      setHealthLoading(false);
+      healthPendingRef.current = false;
+    }
+  }, [health]);
+
   const runHealthCheck = async () => {
     if (healthPendingRef.current) return;
     healthPendingRef.current = true;
@@ -120,9 +128,9 @@ export default function AIAnalystPage({
     try {
       const { data: events } = await getEvents({ limit: 100 });
       await api.post('/api/ai/health', { events });
+      // Keep healthLoading=true — spinner stays until WebSocket result arrives
     } catch (err) {
       console.error('Health check failed:', err);
-    } finally {
       setHealthLoading(false);
       healthPendingRef.current = false;
     }

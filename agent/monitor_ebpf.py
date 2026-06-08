@@ -1177,6 +1177,8 @@ def run_sensor(
     Falls back to SIGSTOP if lsm=bpf not active.
     """
     try:
+        import sys as _sys
+        _sys.path.insert(0, "/usr/lib/python3/dist-packages")
         from bcc import BPF
     except ImportError:
         sys.exit("[ebpf] python3-bpfcc not installed. "
