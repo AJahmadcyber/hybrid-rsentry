@@ -59,7 +59,12 @@ export default function App() {
         return next;
       });
       setAiAnalyses(prev => {
-        if (prev.find(a => a.event_id === msg.event_id)) return prev;
+        const existingIdx = prev.findIndex(a => a.event_id === msg.event_id);
+        if (existingIdx !== -1) {
+          const updated = [...prev];
+          updated[existingIdx] = msg;
+          return updated;
+        }
         return [msg, ...prev].slice(0, 100);
       });
       setAiNewIds(prev => new Set([...prev, msg.event_id]));
