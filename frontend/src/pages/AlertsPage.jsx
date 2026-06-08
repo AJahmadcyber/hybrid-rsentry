@@ -132,6 +132,7 @@ export default function AlertsPage({ newAlert, liveAiResult, liveEvent }) {
         <DetailFlyout
           alert={selected}
           liveEvent={liveEvent}
+          liveAiResult={liveAiResult}
           onClose={() => setSelected(null)}
           onRefresh={fetchAll}
         />
