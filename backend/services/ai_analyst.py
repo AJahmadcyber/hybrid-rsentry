@@ -28,7 +28,6 @@ NVIDIA_RATE_DELAY   = 3.0  # أبطأ
 
 # Rate limit Redis keys — one per provider
 _RATE_KEY_NVIDIA   = "rsentry:nvidia_last_call"
-_RATE_KEY_CEREBRAS = "rsentry:cerebras_last_call"
 
 _client_events   = None   # for live event analysis
 _client_alerts   = None   # for alert analysis
