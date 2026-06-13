@@ -1,9 +1,10 @@
 #!/bin/bash
 pkill -f "celery" 2>/dev/null
 sleep 1
-set -a && source /home/mohammad/hybrid-rsentry/.env && set +a
-PYTHONPATH=/home/mohammad/hybrid-rsentry \
-  /home/mohammad/hybrid-rsentry/venv/bin/celery \
+RSENTRY_ROOT="$(cd "$(dirname "$0")" && pwd)"
+set -a && source "$RSENTRY_ROOT/.env" && set +a
+PYTHONPATH="$RSENTRY_ROOT" \
+  "$RSENTRY_ROOT/venv/bin/celery" \
   -A backend.workers.tasks:celery_app worker \
   --loglevel=info \
   >> /tmp/rsentry-celery.log 2>&1 &
