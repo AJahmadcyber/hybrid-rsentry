@@ -25,7 +25,7 @@ A ransomware detection system for Linux endpoints combining multiple detection l
 | Real-time push | WebSocket (FastAPI) + Redis pub/sub |
 | Agent | Python watchdog + psutil + scipy/numpy (entropy) + networkx (Markov) |
 | AI analysis | NVIDIA API (OpenAI-compatible) — `meta/llama-3.1-70b-instruct` |
-| Frontend | React 18 + Recharts + Tailwind CSS |
+| Frontend | React 19 + Vite 5 + Recharts + Tailwind CSS |
 | Infrastructure | Docker Compose (Postgres + Redis) + Python 3.13 venv on Kali |
 
 ---
