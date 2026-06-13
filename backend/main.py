@@ -47,7 +47,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Hybrid R-Sentry API",
     description="Ransomware detection backend — event ingestion, alert management, live WS push.",
-    version="1.0.0",
+    version="2.2.0",
     lifespan=lifespan,
 )
 
