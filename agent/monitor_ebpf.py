@@ -62,13 +62,6 @@ _ENC_SUFFIXES: Set[str] = {
     ".ryk", ".ryuk", ".dharma", ".wallet",
 }
 
-# Extensions ransomware typically prioritises
-_PRIORITY_EXTS: Set[str] = {
-    ".vmdk", ".vmx", ".vmsn", ".vmem", ".vhd",
-    ".doc", ".docx", ".xls", ".xlsx", ".pdf",
-    ".db", ".sqlite", ".sql", ".edb",
-}
-
 # Benign rename suffixes — never alert on these
 _BENIGN_SUFFIXES: Set[str] = {
     ".bak", ".tmp", ".log", ".swp", ".part",
