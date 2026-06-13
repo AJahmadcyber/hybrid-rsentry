@@ -8,6 +8,7 @@ export const RULE_NAME = {
   MARKOV_REPOSITION:     'Adaptive Canary Reposition',
   HEARTBEAT:             'System Heartbeat',
   RANSOMWARE_RENAME:     'Ransomware File Extension Rename Detected',
+  RANSOMWARE_CREATED:    'Ransomware Encrypted File Created',
 };
 
 export const MITRE = {
