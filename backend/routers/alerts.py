@@ -128,6 +128,24 @@ async def list_alerts_with_events(
         })
     return result
 
+@router.post("/clear-all")
+async def clear_all_alerts(db: AsyncSession = Depends(get_db)):
+    """Acknowledge all open alerts and set resolved_at — equivalent to the manual SQL clear command."""
+    now = datetime.now(timezone.utc)
+    result = await db.execute(
+        update(Alert)
+        .where(Alert.acknowledged == False)  # noqa: E712
+        .values(acknowledged=True, resolved_at=now)
+        .returning(Alert.host_id)
+    )
+    host_ids = list({row[0] for row in result.fetchall()})
+    await db.commit()
+    from backend.workers.tasks import update_host_risk
+    for host_id in host_ids:
+        update_host_risk.delay(host_id)
+    return {"cleared": len(host_ids) > 0, "hosts_updated": len(host_ids)}
+
+
 @router.post("/acknowledge-all")
 async def acknowledge_all_alerts(db: AsyncSession = Depends(get_db)):
     """Bulk-acknowledge every open alert and trigger risk recalculation for all affected hosts."""
