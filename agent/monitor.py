@@ -47,7 +47,6 @@ SENSOR_MODE         = os.getenv("SENSOR_MODE", "enforce")
 WATCH_PATH          = os.getenv("WATCH_PATH", "/home")
 BACKEND_URL         = os.getenv("BACKEND_URL", "http://localhost:8000")
 HOST_ID             = os.getenv("HOST_ID", __import__("socket").gethostname())
-CANARY_STRATEGY     = os.getenv("CANARY_STRATEGY", "bfs")
 HEARTBEAT_INTERVAL  = int(os.getenv("HEARTBEAT_INTERVAL", "30"))
 REPOSITION_INTERVAL = int(os.getenv("REPOSITION_INTERVAL", "300"))
 DRY_RUN             = os.getenv("DRY_RUN", "false").lower() == "true"
