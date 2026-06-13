@@ -84,11 +84,3 @@ async def websocket_alerts(websocket: WebSocket):
         logger.error("WS error: %s", exc)
         manager.disconnect(websocket)
 
-
-async def publish_to_channel(channel: str, data: dict[str, Any]) -> None:
-    """Publish a message to a Redis pub/sub channel."""
-    redis = aioredis.from_url(REDIS_URL, decode_responses=True)
-    try:
-        await redis.publish(channel, json.dumps(data))
-    finally:
-        await redis.aclose()
