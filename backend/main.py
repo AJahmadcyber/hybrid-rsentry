@@ -79,7 +79,7 @@ async def health():
 
 @app.get("/")
 async def root():
-    return {"message": "Hybrid R-Sentry API v1.0.0 — /docs for Swagger UI"}
+    return {"message": "Hybrid R-Sentry API v2.2.0 — /docs for Swagger UI"}
 
 
 class HealthCheckRequest(BaseModel):
