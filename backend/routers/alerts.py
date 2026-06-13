@@ -193,16 +193,26 @@ async def export_alerts_csv(
     def _yn(val):
         return "Yes" if val else "No"
 
-    buf = io.StringIO()
-    writer = csv.writer(buf)
-    writer.writerow([
-        "Alert ID (short)", "Host", "Severity", "Status",
-        "Detected At", "Resolved At",
-        "Event Type", "Event Time", "PID", "Process",
-        "File Path", "Entropy Delta", "Lineage Score", "Canary Hit",
-    ])
+    HEADERS = [
+        "Alert ID",
+        "Host",
+        "Severity",
+        "Status",
+        "Detected At",
+        "Resolved At",
+        "Event Type",
+        "Event Time",
+        "PID",
+        "Process",
+        "File Path",
+        "Entropy Delta",
+        "Lineage Score",
+        "Canary Hit",
+    ]
+
+    data_rows = []
     for alert, event in rows:
-        writer.writerow([
+        data_rows.append([
             str(alert.id)[:8],
             alert.host_id,
             alert.severity.value,
@@ -211,18 +221,36 @@ async def export_alerts_csv(
             _fmt_dt(alert.resolved_at),
             event.event_type.value if event else "",
             _fmt_dt(event.timestamp) if event else "",
-            event.pid if event else "",
+            str(event.pid) if event else "",
             event.process_name if event else "",
             event.file_path if event else "",
             f"{event.entropy_delta:.2f}" if event and event.entropy_delta is not None else "",
             f"{event.lineage_score:.2f}" if event and event.lineage_score is not None else "",
             _yn(event.canary_hit) if event else "",
         ])
+
+    # Calculate column widths for aligned output
+    col_widths = [len(h) for h in HEADERS]
+    for row in data_rows:
+        for i, cell in enumerate(row):
+            col_widths[i] = max(col_widths[i], len(str(cell)))
+
+    def _pad_row(cells):
+        return "  |  ".join(str(c).ljust(col_widths[i]) for i, c in enumerate(cells))
+
+    separator = "-+-".join("-" * (w + 2) for w in col_widths)
+
+    buf = io.StringIO()
+    buf.write(_pad_row(HEADERS) + "\n")
+    buf.write(separator + "\n")
+    for row in data_rows:
+        buf.write(_pad_row(row) + "\n")
     buf.seek(0)
-    filename = f"rsentry-alerts-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.csv"
+
+    filename = f"rsentry-alerts-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.txt"
     return StreamingResponse(
         iter([buf.getvalue()]),
-        media_type="text/csv",
+        media_type="text/plain",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
 
