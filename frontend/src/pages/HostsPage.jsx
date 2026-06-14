@@ -38,16 +38,16 @@ function HostTimeline({ hostId }) {
         Recent events
       </button>
       {open && (
-        <div style={{ marginTop: 8, borderTop: '1px solid #1f2937', paddingTop: 8, maxHeight: 160, overflowY: 'auto' }}>
+        <div style={{ marginTop: 8, borderTop: '1px solid var(--border-soft)', paddingTop: 8, maxHeight: 160, overflowY: 'auto' }}>
           {events.length === 0 ? (
-            <p style={{ fontSize: 11, color: '#4b5563' }}>No events yet.</p>
+            <p style={{ fontSize: 11, color: 'var(--muted)' }}>No events yet.</p>
           ) : events.map(ev => (
             <div key={ev.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: SEV_DOT[ev.severity] || '#6b7280', flexShrink: 0 }} />
-              <span style={{ fontSize: 10, color: '#9ca3af', flexShrink: 0, fontFamily: 'monospace' }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: SEV_DOT[ev.severity] || 'var(--muted)', flexShrink: 0 }} />
+              <span style={{ fontSize: 10, color: 'var(--muted)', flexShrink: 0, fontFamily: 'monospace' }}>
                 {ev.timestamp ? new Date(ev.timestamp).toLocaleTimeString() : '—'}
               </span>
-              <span style={{ fontSize: 11, color: '#d1d5db', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: 11, color: 'var(--text)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {ev.event_type} {ev.file_path ? `· ${ev.file_path.split('/').pop()}` : ''}
               </span>
             </div>
@@ -142,7 +142,7 @@ export default function HostsPage() {
                         data={[{ value: score, fill: color }]}
                         startAngle={90} endAngle={-270}
                       >
-                        <RadialBar dataKey="value" background={{ fill: '#374151' }} />
+                        <RadialBar dataKey="value" background={{ fill: document.documentElement.dataset.theme === 'light' ? '#cbd5e1' : '#374151' }} />
                       </RadialBarChart>
                     </ResponsiveContainer>
                   </div>

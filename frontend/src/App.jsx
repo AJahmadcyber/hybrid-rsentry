@@ -32,6 +32,20 @@ function _beep() {
 
 export default function App() {
   const [page, setPage] = useState('dashboard');
+  const [theme, setTheme] = useState(() => {
+    const saved = localStorage.getItem('rsentry-theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', saved);
+    return saved;
+  });
+
+  const toggleTheme = useCallback(() => {
+    setTheme(prev => {
+      const next = prev === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem('rsentry-theme', next);
+      return next;
+    });
+  }, []);
   const [alertBadgeCount, setAlertBadgeCount] = useState(0);
   const [liveAlert, setLiveAlert] = useState(null);
   const [liveEvent, setLiveEvent] = useState(null);
@@ -152,7 +166,7 @@ export default function App() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg)', overflow: 'hidden' }}>
-      <TopBar activePage={page} onNavigate={handleNavigate} connected={connected} alertCount={alertBadgeCount} />
+      <TopBar activePage={page} onNavigate={handleNavigate} connected={connected} alertCount={alertBadgeCount} theme={theme} onThemeToggle={toggleTheme} />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
         {renderPage()}
       </div>

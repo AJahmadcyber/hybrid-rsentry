@@ -64,8 +64,8 @@ function EntropyPill({ value }) {
   const pct = Math.min(100, (value / 8) * 100);
   return (
     <span className="inline-flex items-center gap-1 ml-2">
-      <span style={{ fontSize: 10, color: '#6b7280' }}>H:</span>
-      <span className="relative inline-block w-14 h-1.5 rounded-full overflow-hidden bg-gray-700">
+      <span style={{ fontSize: 10, color: 'var(--muted)' }}>H:</span>
+      <span className="relative inline-block w-14 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--border)' }}>
         <span className="absolute left-0 top-0 h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: color }} />
       </span>
       <span style={{ fontSize: 10, color }}>{value.toFixed(1)}</span>
@@ -93,7 +93,7 @@ function TreeRow({ node, prefix, isLast, flashPaths, highlightPaths, depth }) {
       <div
         className="flex items-center group cursor-pointer select-none"
         style={{
-          backgroundColor: isFlashing ? '#1f2937' : isHighlighted ? 'rgba(79,140,201,0.12)' : 'transparent',
+          backgroundColor: isFlashing ? 'var(--panel-2)' : isHighlighted ? 'rgba(79,140,201,0.12)' : 'transparent',
           transition: 'background 0.3s',
           borderLeft: isHighlighted ? '2px solid var(--accent, #4f8cc9)' : '2px solid transparent',
           paddingLeft: isHighlighted ? 2 : 0,

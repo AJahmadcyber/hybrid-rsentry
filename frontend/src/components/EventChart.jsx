@@ -38,6 +38,11 @@ function bucketsLastN(events, minutes = 30) {
 
 export default function EventChart() {
   const [data, setData] = useState([]);
+  const isLight = document.documentElement.dataset.theme === 'light';
+  const chartGrid   = isLight ? '#cbd5e1' : '#374151';
+  const chartMuted  = isLight ? '#64748b' : '#9ca3af';
+  const chartBg     = isLight ? '#ffffff' : '#1f2937';
+  const chartText   = isLight ? '#0f172a' : '#f9fafb';
 
   const fetchAndBucket = useCallback(async () => {
     try {
@@ -55,8 +60,8 @@ export default function EventChart() {
   }, [fetchAndBucket]);
 
   return (
-    <div className="bg-gray-900 rounded-xl p-4">
-      <h2 className="text-white text-lg font-semibold mb-4">Events (last 30 min)</h2>
+    <div style={{ background: 'var(--panel)', borderRadius: 12, padding: 16 }}>
+      <h2 style={{ color: 'var(--text)', fontSize: 16, fontWeight: 600, marginBottom: 16, marginTop: 0 }}>Events (last 30 min)</h2>
       <ResponsiveContainer width="100%" height={220}>
         <AreaChart data={data} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
           <defs>
@@ -67,14 +72,14 @@ export default function EventChart() {
               </linearGradient>
             ))}
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-          <XAxis dataKey="time" tick={{ fill: '#9ca3af', fontSize: 10 }} />
-          <YAxis tick={{ fill: '#9ca3af', fontSize: 10 }} allowDecimals={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke={chartGrid} />
+          <XAxis dataKey="time" tick={{ fill: chartMuted, fontSize: 10 }} />
+          <YAxis tick={{ fill: chartMuted, fontSize: 10 }} allowDecimals={false} />
           <Tooltip
-            contentStyle={{ backgroundColor: '#1f2937', border: 'none', borderRadius: 8 }}
-            labelStyle={{ color: '#f9fafb' }}
+            contentStyle={{ backgroundColor: chartBg, border: `1px solid ${chartGrid}`, borderRadius: 8 }}
+            labelStyle={{ color: chartText }}
           />
-          <Legend wrapperStyle={{ color: '#9ca3af', fontSize: 12 }} />
+          <Legend wrapperStyle={{ color: chartMuted, fontSize: 12 }} />
           {Object.entries(SEVERITY_COLORS).map(([sev, color]) => (
             <Area
               key={sev}

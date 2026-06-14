@@ -28,75 +28,56 @@ function getProcedure(event) {
 function EventRow({ event, isNew, onSelect }) {
   const proc = getProcedure(event);
   const isMov = event.event_type === 'HEARTBEAT' && event.details?.sub_type === 'MARKOV_REPOSITION';
+  const eColor = (d) => d > 5 ? '#ef4444' : d > 3.5 ? '#f59e0b' : '#22c55e';
 
   return (
     <div
       onClick={() => onSelect(event)}
-      className={`border-l-2 pl-3 py-2 mb-2 rounded-r-lg transition-all cursor-pointer ${isNew ? 'opacity-100' : 'opacity-80'}`}
-      style={{ borderColor: proc.color, backgroundColor: proc.bg }}
+      style={{ borderLeft: `2px solid ${proc.color}`, paddingLeft: 10, paddingTop: 7, paddingBottom: 7, marginBottom: 8, borderRadius: '0 6px 6px 0', cursor: 'pointer', opacity: isNew ? 1 : 0.85, backgroundColor: proc.bg }}
       title="Click to view details"
     >
-      {/* Top row */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <span style={{ fontSize: 14 }}>{proc.icon}</span>
-        <span className="text-xs font-semibold" style={{ color: proc.color }}>
-          {proc.name}
-        </span>
-        {isNew && (
-          <span className="text-xs px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 font-bold">NEW</span>
-        )}
-        <span className="ml-auto text-gray-600 text-xs">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 13 }}>{proc.icon}</span>
+        <span style={{ fontSize: 11, fontWeight: 600, color: proc.color }}>{proc.name}</span>
+        {isNew && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 10, background: 'rgba(234,179,8,0.15)', color: '#f59e0b', fontWeight: 700 }}>NEW</span>}
+        <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--muted)' }}>
           {formatDistanceToNow(new Date(event.timestamp), { addSuffix: true })}
         </span>
       </div>
-
-      {/* Details */}
-      <div className="mt-1 space-y-0.5">
+      <div style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: 2 }}>
         {event.file_path && !isMov && (
-          <p className="text-gray-400 text-xs font-mono truncate">{event.file_path}</p>
+          <p style={{ fontSize: 10, fontFamily: 'var(--mono)', color: 'var(--text-2)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{event.file_path}</p>
         )}
         {event.process_name && event.process_name !== 'unknown' && event.process_name !== 'markov-repositioner' && (
-          <p className="text-gray-500 text-xs">Process: <span className="text-gray-300">{event.process_name}</span></p>
+          <p style={{ fontSize: 10, color: 'var(--muted)', margin: 0 }}>Process: <span style={{ color: 'var(--text-2)' }}>{event.process_name}</span></p>
         )}
         {event.entropy_delta > 0 && (
-          <div className="flex items-center gap-2">
-            <span className="text-gray-500 text-xs">Entropy:</span>
-            <div className="flex items-center gap-1">
-              <div className="w-16 h-1.5 bg-gray-700 rounded-full overflow-hidden">
-                <div
-                  className="h-full rounded-full"
-                  style={{
-                    width: `${Math.min(100, (event.entropy_delta / 8) * 100)}%`,
-                    backgroundColor: event.entropy_delta > 5 ? '#ef4444' : event.entropy_delta > 3.5 ? '#fbbf24' : '#22c55e',
-                  }}
-                />
-              </div>
-              <span className="text-xs" style={{ color: event.entropy_delta > 5 ? '#ef4444' : event.entropy_delta > 3.5 ? '#fbbf24' : '#22c55e' }}>
-                {event.entropy_delta.toFixed(2)}
-              </span>
-            </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 10, color: 'var(--muted)' }}>Entropy:</span>
+            <span style={{ width: 64, height: 5, borderRadius: 3, background: 'var(--border)', overflow: 'hidden', display: 'inline-block' }}>
+              <span style={{ display: 'block', height: '100%', borderRadius: 3, width: `${Math.min(100, (event.entropy_delta / 8) * 100)}%`, backgroundColor: eColor(event.entropy_delta) }} />
+            </span>
+            <span style={{ fontSize: 10, color: eColor(event.entropy_delta) }}>{event.entropy_delta.toFixed(2)}</span>
           </div>
         )}
         {isMov && event.details?.moved?.length > 0 && (
-          <div className="space-y-0.5">
+          <>
             {event.details.moved.slice(0, 3).map((m, i) => (
-              <p key={i} className="text-xs font-mono text-gray-400 truncate">
-                <span className="text-cyan-500">{m.from?.split('/').pop()}</span>
-                <span className="text-gray-600"> → </span>
-                <span className="text-indigo-400">{m.to?.replace('/home/', '~/')}</span>
+              <p key={i} style={{ fontSize: 10, fontFamily: 'var(--mono)', color: 'var(--text-2)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span style={{ color: '#06b6d4' }}>{m.from?.split('/').pop()}</span>
+                <span style={{ color: 'var(--muted)' }}> → </span>
+                <span style={{ color: 'var(--accent)' }}>{m.to?.replace('/home/', '~/')}</span>
               </p>
             ))}
             {event.details?.hotspots?.length > 0 && (
-              <p className="text-gray-600 text-xs">
+              <p style={{ fontSize: 10, color: 'var(--muted)', margin: 0 }}>
                 Hotspots: {event.details.hotspots.slice(0, 2).map(h => h.split('/').pop()).join(', ')}
               </p>
             )}
-          </div>
+          </>
         )}
-        {event.canary_hit && (
-          <p className="text-red-400 text-xs font-bold">⚠ Canary file triggered</p>
-        )}
-        <p className="text-gray-700 text-xs font-mono">{event.host_id}</p>
+        {event.canary_hit && <p style={{ fontSize: 10, color: 'var(--crit)', fontWeight: 700, margin: 0 }}>⚠ Canary file triggered</p>}
+        <p style={{ fontSize: 10, fontFamily: 'var(--mono)', color: 'var(--faint)', margin: 0 }}>{event.host_id}</p>
       </div>
     </div>
   );
@@ -159,22 +140,25 @@ export default function TacticalResponseLog({ liveEvent }) {
   });
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl flex flex-col h-full overflow-hidden">
+    <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 12, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       {/* Header */}
-      <div className="px-4 py-3 border-b border-gray-800 shrink-0">
-        <h2 className="text-white text-sm font-semibold">Tactical Response Log</h2>
-        <p className="text-gray-500 text-xs mt-0.5">Live detection & automated response procedures</p>
+      <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+        <h2 style={{ color: 'var(--text)', fontSize: 13, fontWeight: 600, margin: 0 }}>Tactical Response Log</h2>
+        <p style={{ color: 'var(--muted)', fontSize: 11, margin: '2px 0 0' }}>Live detection & automated response procedures</p>
       </div>
 
       {/* Filters */}
-      <div className="px-3 py-2 border-b border-gray-800 flex gap-1 flex-wrap shrink-0">
+      <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 4, flexWrap: 'wrap', flexShrink: 0 }}>
         {FILTER_OPTIONS.map((f) => (
           <button
             key={f}
             onClick={() => setFilter(f)}
-            className={`px-2 py-0.5 text-xs rounded font-medium transition-all ${
-              filter === f ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-            }`}
+            style={{
+              padding: '2px 8px', fontSize: 10, borderRadius: 4, fontWeight: 500, cursor: 'pointer',
+              background: filter === f ? 'var(--accent)' : 'var(--panel-2)',
+              color: filter === f ? '#fff' : 'var(--muted)',
+              border: `1px solid ${filter === f ? 'transparent' : 'var(--border)'}`,
+            }}
           >
             {f}
           </button>
@@ -182,9 +166,9 @@ export default function TacticalResponseLog({ liveEvent }) {
       </div>
 
       {/* Events */}
-      <div className="flex-1 overflow-y-auto p-3">
+      <div style={{ flex: 1, overflowY: 'auto', padding: 10 }}>
         {filtered.length === 0 ? (
-          <p className="text-gray-600 text-xs italic text-center mt-4">No events yet. Run a simulation to see activity.</p>
+          <p style={{ color: 'var(--faint)', fontSize: 11, fontStyle: 'italic', textAlign: 'center', marginTop: 16 }}>No events yet. Run a simulation to see activity.</p>
         ) : (
           filtered.map((event) => (
             <EventRow key={event.id} event={event} isNew={newIds.has(event.id)} onSelect={setSelectedEvent} />

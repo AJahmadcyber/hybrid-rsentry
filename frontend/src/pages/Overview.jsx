@@ -9,17 +9,19 @@ export default function Overview({ liveAlert, liveEvent, connected }) {
   return (
     <div className="flex-1 overflow-auto p-6">
       {/* Header */}
-      <div className="mb-4 flex items-center justify-between">
+      <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
-          <h2 className="text-white text-xl font-semibold">Overview</h2>
-          <p className="text-gray-500 text-sm">Real-time ransomware detection status</p>
+          <h2 style={{ color: 'var(--text)', fontSize: 20, fontWeight: 600, margin: 0 }}>Overview</h2>
+          <p style={{ color: 'var(--muted)', fontSize: 13, margin: '2px 0 0' }}>Real-time ransomware detection status</p>
         </div>
-        <div className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium ${
-          connected
-            ? 'bg-green-900/30 border-green-700 text-green-400'
-            : 'bg-red-900/30 border-red-800 text-red-400'
-        }`}>
-          <span className={`w-2.5 h-2.5 rounded-full ${connected ? 'bg-green-400 animate-pulse' : 'bg-red-500'}`} />
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8, padding: '6px 14px',
+          borderRadius: 8, fontSize: 13, fontWeight: 500,
+          background: connected ? 'rgba(22,163,74,0.12)' : 'rgba(220,38,38,0.10)',
+          border: `1px solid ${connected ? 'rgba(22,163,74,0.4)' : 'rgba(220,38,38,0.4)'}`,
+          color: connected ? 'var(--ok)' : 'var(--crit)',
+        }}>
+          <span style={{ width: 10, height: 10, borderRadius: '50%', background: connected ? 'var(--ok)' : 'var(--crit)', display: 'inline-block' }} />
           {connected ? 'LIVE' : 'DISCONNECTED'}
         </div>
       </div>

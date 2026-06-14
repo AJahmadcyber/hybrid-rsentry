@@ -2,27 +2,18 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { getAlerts, acknowledgeAlert } from '../api/client';
 import { formatDistanceToNow } from 'date-fns';
 
-const SEVERITY_COLORS = {
-  CRITICAL: 'bg-red-600 text-white',
-  HIGH: 'bg-orange-500 text-white',
-  MEDIUM: 'bg-yellow-400 text-gray-900',
-  LOW: 'bg-blue-400 text-white',
-};
-
+const SEV_BG  = { CRITICAL: 'var(--crit)',  HIGH: 'var(--high)',  MEDIUM: 'var(--med)',  LOW: 'var(--low)'  };
+const SEV_FG  = { CRITICAL: '#fff',          HIGH: '#fff',          MEDIUM: '#fff',        LOW: '#fff'        };
 const SEVERITY_ORDER = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
 
 export default function AlertFeed({ newAlert }) {
-  const [alerts, setAlerts] = useState([]);
+  const [alerts, setAlerts]   = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('ALL');
+  const [filter, setFilter]   = useState('ALL');
 
   const fetchAlerts = useCallback(async () => {
     try {
-      const params = {
-        acknowledged: false,   // only show active unacknowledged alerts
-        limit: 100,
-        ...(filter !== 'ALL' ? { severity: filter } : {}),
-      };
+      const params = { acknowledged: false, limit: 100, ...(filter !== 'ALL' ? { severity: filter } : {}) };
       const { data } = await getAlerts(params);
       setAlerts(data);
     } catch (err) {
@@ -38,59 +29,44 @@ export default function AlertFeed({ newAlert }) {
     return () => clearInterval(t);
   }, [fetchAlerts]);
 
-  // Inject live WS alert at the top immediately
   useEffect(() => {
     if (!newAlert) return;
-    setAlerts((prev) => {
-      const exists = prev.find((a) => a.id === newAlert.alert_id);
-      if (exists) return prev;
-      return [
-        {
-          id: newAlert.alert_id,
-          host_id: newAlert.host_id,
-          severity: newAlert.severity,
-          acknowledged: false,
-          created_at: new Date().toISOString(),
-          _live: true,
-        },
-        ...prev,
-      ];
+    setAlerts(prev => {
+      if (prev.find(a => a.id === newAlert.alert_id)) return prev;
+      return [{ id: newAlert.alert_id, host_id: newAlert.host_id, severity: newAlert.severity, acknowledged: false, created_at: new Date().toISOString(), _live: true }, ...prev];
     });
   }, [newAlert]);
 
   const handleAcknowledge = async (id) => {
     try {
       await acknowledgeAlert(id);
-      // Remove immediately from feed since we only show active alerts
-      setAlerts((prev) => prev.filter((a) => a.id !== id));
+      setAlerts(prev => prev.filter(a => a.id !== id));
     } catch (err) {
       console.error('Acknowledge failed:', err);
     }
   };
 
-  const sorted = [...alerts].sort(
-    (a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]
-  );
+  const sorted = [...alerts].sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
 
   return (
-    <div className="bg-gray-900 rounded-xl p-4 h-full flex flex-col">
-      <div className="flex items-center justify-between mb-3">
+    <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 12, padding: 16, height: '100%', display: 'flex', flexDirection: 'column' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
         <div>
-          <h2 className="text-white text-lg font-semibold">Live Alert Feed</h2>
-          {alerts.length > 0 && (
-            <p className="text-gray-500 text-xs">{alerts.length} active</p>
-          )}
+          <h2 style={{ color: 'var(--text)', fontSize: 16, fontWeight: 600, margin: 0 }}>Live Alert Feed</h2>
+          {alerts.length > 0 && <p style={{ color: 'var(--muted)', fontSize: 11, margin: '2px 0 0' }}>{alerts.length} active</p>}
         </div>
-        <div className="flex gap-2">
-          {['ALL', 'CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].map((s) => (
+        <div style={{ display: 'flex', gap: 6 }}>
+          {['ALL', 'CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].map(s => (
             <button
               key={s}
               onClick={() => setFilter(s)}
-              className={`px-2 py-1 text-xs rounded font-medium transition-all ${
-                filter === s
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-              }`}
+              style={{
+                padding: '3px 8px', fontSize: 11, borderRadius: 5, fontWeight: 500, cursor: 'pointer',
+                background: filter === s ? 'var(--accent)' : 'var(--panel-3)',
+                color: filter === s ? '#fff' : 'var(--text-2)',
+                border: `1px solid ${filter === s ? 'transparent' : 'var(--border)'}`,
+              }}
             >
               {s}
             </button>
@@ -98,18 +74,15 @@ export default function AlertFeed({ newAlert }) {
         </div>
       </div>
 
+      {/* Body */}
       {loading ? (
-        <p className="text-gray-400 text-sm">Loading alerts...</p>
+        <p style={{ color: 'var(--muted)', fontSize: 13 }}>Loading alerts...</p>
       ) : sorted.length === 0 ? (
-        <p className="text-gray-500 text-sm italic">No active alerts. System nominal.</p>
+        <p style={{ color: 'var(--muted)', fontSize: 13, fontStyle: 'italic' }}>No active alerts. System nominal.</p>
       ) : (
-        <div className="overflow-y-auto flex-1 space-y-2 pr-1">
-          {sorted.map((alert) => (
-            <AlertRow
-              key={alert.id}
-              alert={alert}
-              onAcknowledge={handleAcknowledge}
-            />
+        <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {sorted.map(alert => (
+            <AlertRow key={alert.id} alert={alert} onAcknowledge={handleAcknowledge} />
           ))}
         </div>
       )}
@@ -120,26 +93,28 @@ export default function AlertFeed({ newAlert }) {
 function AlertRow({ alert, onAcknowledge }) {
   return (
     <div
-      className={`rounded-lg p-3 flex items-start justify-between gap-3 border border-gray-600 ${
-        alert._live ? 'animate-pulse-once' : ''
-      }`}
-      style={{ backgroundColor: '#1e2130' }}
+      className={alert._live ? 'animate-pulse-once' : ''}
+      style={{ background: 'var(--panel-2)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}
     >
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className={`text-xs font-bold px-2 py-0.5 rounded ${SEVERITY_COLORS[alert.severity]}`}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: SEV_BG[alert.severity], color: SEV_FG[alert.severity] }}>
             {alert.severity}
           </span>
-          <span className="text-gray-300 text-xs font-mono truncate">{alert.host_id}</span>
-          <span className="text-gray-500 text-xs">
+          <span style={{ fontSize: 11, fontFamily: 'var(--mono)', color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{alert.host_id}</span>
+          <span style={{ fontSize: 11, color: 'var(--muted)' }}>
             {formatDistanceToNow(new Date(alert.created_at), { addSuffix: true })}
           </span>
         </div>
-        <p className="text-gray-400 text-xs mt-1 truncate">ID: {alert.id?.slice(0, 8)}…</p>
+        <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          ID: {alert.id?.slice(0, 8)}…
+        </p>
       </div>
       <button
         onClick={() => onAcknowledge(alert.id)}
-        className="text-xs bg-gray-700 hover:bg-green-700 text-gray-300 hover:text-white px-2 py-1 rounded transition-colors shrink-0"
+        style={{ fontSize: 11, background: 'var(--panel-3)', border: '1px solid var(--border)', color: 'var(--text-2)', padding: '4px 10px', borderRadius: 5, cursor: 'pointer', flexShrink: 0 }}
+        onMouseEnter={e => { e.currentTarget.style.background = 'var(--ok)'; e.currentTarget.style.color = '#fff'; e.currentTarget.style.borderColor = 'transparent'; }}
+        onMouseLeave={e => { e.currentTarget.style.background = 'var(--panel-3)'; e.currentTarget.style.color = 'var(--text-2)'; e.currentTarget.style.borderColor = 'var(--border)'; }}
       >
         ACK
       </button>

@@ -3,21 +3,21 @@ import { getHosts, getHostRisk } from '../api/client';
 import { RadialBarChart, RadialBar, ResponsiveContainer } from 'recharts';
 
 const RISK_COLOR = (score) => {
-  if (score >= 80) return '#ef4444';
-  if (score >= 50) return '#f97316';
-  if (score >= 25) return '#eab308';
-  return '#22c55e';
+  if (score >= 80) return 'var(--crit)';
+  if (score >= 50) return 'var(--high)';
+  if (score >= 25) return 'var(--med)';
+  return 'var(--ok)';
 };
 
 const RISK_LABEL = (score) => {
-  if (score >= 80) return { label: 'CRITICAL', cls: 'text-red-400' };
-  if (score >= 50) return { label: 'HIGH', cls: 'text-orange-400' };
-  if (score >= 25) return { label: 'MEDIUM', cls: 'text-yellow-400' };
-  return { label: 'LOW', cls: 'text-green-400' };
+  if (score >= 80) return { label: 'CRITICAL', color: 'var(--crit)' };
+  if (score >= 50) return { label: 'HIGH',     color: 'var(--high)' };
+  if (score >= 25) return { label: 'MEDIUM',   color: 'var(--med)'  };
+  return                   { label: 'LOW',      color: 'var(--ok)'   };
 };
 
 export default function HostRiskPanel() {
-  const [hosts, setHosts] = useState([]);
+  const [hosts,   setHosts]   = useState([]);
   const [riskMap, setRiskMap] = useState({});
   const [loading, setLoading] = useState(true);
 
@@ -25,15 +25,9 @@ export default function HostRiskPanel() {
     try {
       const { data: hostList } = await getHosts({ limit: 20 });
       setHosts(hostList);
-      const riskResults = await Promise.allSettled(
-        hostList.map((h) => getHostRisk(h.host_id))
-      );
+      const results = await Promise.allSettled(hostList.map(h => getHostRisk(h.host_id)));
       const map = {};
-      hostList.forEach((h, i) => {
-        if (riskResults[i].status === 'fulfilled') {
-          map[h.host_id] = riskResults[i].value.data;
-        }
-      });
+      hostList.forEach((h, i) => { if (results[i].status === 'fulfilled') map[h.host_id] = results[i].value.data; });
       setRiskMap(map);
     } catch (err) {
       console.error('HostRiskPanel error:', err);
@@ -48,81 +42,66 @@ export default function HostRiskPanel() {
     return () => clearInterval(interval);
   }, [fetchAll]);
 
-  if (loading) {
-    return (
-      <div className="bg-gray-900 rounded-xl p-4 h-full">
-        <p className="text-gray-400 text-sm">Loading hosts…</p>
-      </div>
-    );
-  }
+  const panel = { background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 12, padding: 16, height: '100%', overflowY: 'auto' };
 
-  if (hosts.length === 0) {
-    return (
-      <div className="bg-gray-900 rounded-xl p-4 h-full">
-        <h2 className="text-white text-base font-semibold mb-2">Host Risk</h2>
-        <p className="text-gray-500 text-sm italic">No hosts registered yet.</p>
-      </div>
-    );
-  }
+  if (loading) return <div style={panel}><p style={{ color: 'var(--muted)', fontSize: 13 }}>Loading hosts…</p></div>;
+
+  if (hosts.length === 0) return (
+    <div style={panel}>
+      <h2 style={{ color: 'var(--text)', fontSize: 14, fontWeight: 600, marginTop: 0 }}>Host Risk</h2>
+      <p style={{ color: 'var(--muted)', fontSize: 13, fontStyle: 'italic' }}>No hosts registered yet.</p>
+    </div>
+  );
+
+  const radialBg = document.documentElement.dataset.theme === 'light' ? '#cbd5e1' : '#374151';
 
   return (
-    <div className="bg-gray-900 rounded-xl p-4 h-full overflow-y-auto">
-      <h2 className="text-white text-base font-semibold mb-3">Host Risk</h2>
-      <div className="space-y-3">
-        {hosts.map((host) => {
-          const risk = riskMap[host.host_id];
+    <div style={panel}>
+      <h2 style={{ color: 'var(--text)', fontSize: 14, fontWeight: 600, marginTop: 0, marginBottom: 12 }}>Host Risk</h2>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {hosts.map(host => {
+          const risk  = riskMap[host.host_id];
           const score = risk?.risk_score ?? host.risk_score ?? 0;
           const color = RISK_COLOR(score);
-          const { label, cls } = RISK_LABEL(score);
+          const { label, color: labelColor } = RISK_LABEL(score);
 
           return (
             <div
               key={host.host_id}
-              className={`flex items-center gap-3 p-3 rounded-lg border ${
-                host.is_contained ? 'border-red-800 bg-red-950/20' : 'border-gray-700'
-              }`}
-              style={{ backgroundColor: host.is_contained ? undefined : '#1e2130' }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px',
+                borderRadius: 8, border: `1px solid ${host.is_contained ? 'rgba(220,38,38,0.4)' : 'var(--border)'}`,
+                background: host.is_contained ? 'var(--crit-bg)' : 'var(--panel-2)',
+              }}
             >
-              {/* Radial gauge */}
               <div style={{ width: 52, height: 52, flexShrink: 0 }}>
                 <ResponsiveContainer width="100%" height="100%">
-                  <RadialBarChart
-                    cx="50%" cy="50%"
-                    innerRadius="55%" outerRadius="100%"
-                    data={[{ value: score, fill: color }]}
-                    startAngle={90} endAngle={-270}
-                  >
-                    <RadialBar dataKey="value" background={{ fill: '#374151' }} />
+                  <RadialBarChart cx="50%" cy="50%" innerRadius="55%" outerRadius="100%" data={[{ value: score, fill: color }]} startAngle={90} endAngle={-270}>
+                    <RadialBar dataKey="value" background={{ fill: radialBg }} />
                   </RadialBarChart>
                 </ResponsiveContainer>
               </div>
-
-              {/* Host info */}
-              <div className="flex-1 min-w-0">
-                <p className="text-white text-xs font-mono truncate">{host.host_id}</p>
-                <p className={`text-xs font-bold ${cls}`}>{label}</p>
-                <p className="text-gray-500 text-xs">
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ fontSize: 11, fontFamily: 'var(--mono)', color: 'var(--text)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{host.host_id}</p>
+                <p style={{ fontSize: 11, fontWeight: 700, color: labelColor, margin: '2px 0' }}>{label}</p>
+                <p style={{ fontSize: 11, margin: 0, fontFamily: 'var(--mono)' }}>
                   <span style={{ color }}>{score.toFixed(0)}</span>
-                  <span className="text-gray-600">/100</span>
+                  <span style={{ color: 'var(--faint)' }}>/100</span>
                 </p>
                 {host.is_contained && (
-                  <span className="text-[10px] bg-red-900 text-red-300 px-1.5 py-0.5 rounded mt-0.5 inline-block">
-                    CONTAINED
-                  </span>
+                  <span style={{ fontSize: 10, background: 'var(--crit-bg)', color: 'var(--crit)', border: '1px solid rgba(220,38,38,0.3)', padding: '1px 6px', borderRadius: 4, display: 'inline-block', marginTop: 3 }}>CONTAINED</span>
                 )}
               </div>
-
-              {/* Alert / event counts */}
-              <div className="text-right shrink-0">
-                <p className="text-gray-500 text-[10px]">Total Alerts</p>
-                <p className="text-white text-sm font-bold">{risk?.total_alert_count ?? risk?.alert_count ?? '—'}</p>
+              <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                <p style={{ fontSize: 10, color: 'var(--muted)', margin: 0 }}>Total Alerts</p>
+                <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', margin: '2px 0 0' }}>{risk?.total_alert_count ?? risk?.alert_count ?? '—'}</p>
               </div>
             </div>
           );
         })}
       </div>
-      <p className="text-gray-700 text-xs mt-3 text-center">
-        Manage hosts → <span className="text-gray-500">Hosts page</span>
+      <p style={{ fontSize: 11, color: 'var(--faint)', textAlign: 'center', marginTop: 10 }}>
+        Manage hosts → <span style={{ color: 'var(--muted)' }}>Hosts page</span>
       </p>
     </div>
   );

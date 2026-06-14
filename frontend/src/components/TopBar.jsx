@@ -10,13 +10,13 @@ const NAV = [
   { id: 'exceptions', label: 'Exceptions' },
 ];
 
-export default function TopBar({ activePage, onNavigate, alertCount, connected }) {
+export default function TopBar({ activePage, onNavigate, alertCount, connected, theme, onThemeToggle }) {
   return (
     <header style={{ height: 46, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, padding: '0 12px 0 14px', background: 'var(--panel)', borderBottom: '1px solid var(--border)' }}>
 
       {/* Brand */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 9, fontWeight: 600, fontSize: 14, letterSpacing: '-0.01em', paddingRight: 8 }}>
-        <span style={{ width: 22, height: 22, borderRadius: 5, background: '#20242c', border: '1px solid #333741', display: 'grid', placeItems: 'center', color: 'var(--accent)', fontSize: 12 }}>
+        <span style={{ width: 22, height: 22, borderRadius: 5, background: 'var(--panel-2)', border: '1px solid var(--border)', display: 'grid', placeItems: 'center', color: 'var(--accent)', fontSize: 12 }}>
           <i className="fa-solid fa-shield-halved" />
         </span>
         <span style={{ color: 'var(--text)' }}>Hybrid R-Sentry</span>
@@ -44,6 +44,14 @@ export default function TopBar({ activePage, onNavigate, alertCount, connected }
       <div style={{ flex: 1 }} />
 
       {/* Right controls */}
+      <button
+        onClick={onThemeToggle}
+        title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+        className="siem-icon-btn"
+        style={{ marginRight: 2 }}
+      >
+        <i className={`fa-solid ${theme === 'dark' ? 'fa-sun' : 'fa-moon'}`} style={{ fontSize: 13 }} />
+      </button>
       <button style={{ height: 28, display: 'inline-flex', alignItems: 'center', gap: 7, padding: '0 10px', borderRadius: 6, cursor: 'pointer', background: 'var(--panel-2)', border: '1px solid var(--border)', color: 'var(--text-2)', fontSize: 12, fontFamily: 'var(--sans)' }}>
         <i className="fa-solid fa-layer-group" style={{ fontSize: 11, color: 'var(--muted)' }} />
         rsentry-prod
