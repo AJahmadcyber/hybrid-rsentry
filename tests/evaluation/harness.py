@@ -199,6 +199,19 @@ class _StubBackend:
                 except Exception:
                     return b""
 
+            def _reply(self) -> None:
+                # The agent is SIGKILLed mid-pipeline and closes its socket, so a
+                # synchronous telemetry POST may be half-written when we reply →
+                # BrokenPipeError. The reply is irrelevant (we only absorb), so
+                # swallow socket teardown errors quietly.
+                try:
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(b'{"status":"ok"}')
+                except (BrokenPipeError, ConnectionResetError, OSError):
+                    pass
+
             def do_POST(self):  # noqa: N802
                 body = self._drain()
                 try:
@@ -207,17 +220,19 @@ class _StubBackend:
                         outer.events.append(payload)
                 except Exception:
                     pass
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.end_headers()
-                self.wfile.write(b'{"status":"ok"}')
+                self._reply()
 
             def do_GET(self):  # noqa: N802
-                self.send_response(200)
-                self.end_headers()
-                self.wfile.write(b'{"status":"ok"}')
+                self._reply()
 
-            def log_message(self, *a):  # silence
+            def handle_one_request(self):
+                # Silence socket errors raised inside the base request cycle too.
+                try:
+                    super().handle_one_request()
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+
+            def log_message(self, *a):  # silence default access logging
                 return
 
         self._srv = HTTPServer(("127.0.0.1", 0), _Handler)

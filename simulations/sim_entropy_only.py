@@ -227,6 +227,17 @@ def run_entropy_attack(root: str,
             if delay > 0:
                 time.sleep(delay)
 
+        # Close the side-channel fd NOW (end of Phase A). The agent's entropy
+        # layer (_handle_behavior) samples the FIRST regular file in
+        # /proc/<pid>/fd for its entropy>=6.5 gate. The --eval-timestamps writer
+        # opens its low-entropy JSONL at fd 3 (before the docs), so leaving it
+        # open makes the agent sample THAT instead of a high-entropy doc →
+        # entropy gate fails → 3/3 FN under the harness. t0 + every per-doc touch
+        # are already recorded, so closing here loses nothing; only the docs
+        # (fd 4+, high entropy) remain open through the freeze window.
+        if ts_writer is not None:
+            ts_writer.close()
+
         # ---- Phase B: rapid scratch deletes → fire behavior_events ----------
         # Fast and tight so del_per_sec >= 2 holds when the score crosses 50.
         scratch_dir = Path(root) / SCRATCH_DIRNAME
@@ -241,9 +252,10 @@ def run_entropy_attack(root: str,
                 fh.write(b"scratch-data " * 64)
             scratch_paths.append(sp)
         for sp in scratch_paths:         # the delete burst (no per-op delay)
+            # No side-channel touch here: scratch deletes are the score-pump
+            # mechanism, not malicious encryption — recording them would inflate
+            # files_touched_before_freeze. (The writer is already closed anyway.)
             try:
-                if ts_writer is not None:
-                    ts_writer.touch(str(sp), "delete")
                 os.unlink(sp)
                 stats["scratch_deleted"] += 1
             except OSError:
