@@ -15,6 +15,7 @@ import os
 import shutil
 import signal
 import subprocess
+import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -31,6 +32,22 @@ EVIDENCE_BASE = Path("/tmp/rsentry_evidence")
 # can match it. No cgroup controller needs to be enabled for membership matching.
 CGROUP2_ROOT = Path("/sys/fs/cgroup")
 CGROUP_CONTAIN_PREFIX = "rsentry-contain"
+
+# psutil renamed Process.connections() -> Process.net_connections() in 6.0.0
+# (the old name still works but is deprecated). Resolve the available name ONCE
+# at import so evidence capture works on either version. psutil 5.9.x (the venv's
+# version) only has connections(); calling net_connections() there raises
+# AttributeError — the exact bug that silently aborted containment.
+_PSUTIL_CONN_METHOD = (
+    "net_connections" if hasattr(psutil.Process, "net_connections") else "connections"
+)
+
+
+def _proc_connections(proc: "psutil.Process") -> list:
+    """Return a process's network connections via whichever API this psutil
+    exposes (net_connections on >=6.0, connections on <6.0)."""
+    fn = getattr(proc, _PSUTIL_CONN_METHOD, None)
+    return fn() if fn is not None else []
 
 
 class ContainmentResult:
@@ -132,7 +149,17 @@ def _capture_evidence(pid: int, output_dir: Optional[Path] = None) -> tuple[Opti
         evidence_dir = EVIDENCE_BASE / f"pid_{pid}_{ts}"
     else:
         evidence_dir = output_dir
-    evidence_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    try:
+        evidence_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    except OSError as exc:
+        # EVIDENCE_BASE may be unwritable (e.g. root-owned leftover from an
+        # earlier privileged run while we run unprivileged). Evidence capture
+        # must never abort the containment pipeline — fall back to a private
+        # temp dir and keep going.
+        fallback = Path(tempfile.mkdtemp(prefix=f"rsentry_evidence_pid{pid}_"))
+        logger.warning("evidence dir %s not writable (%s) — falling back to %s",
+                       evidence_dir, exc, fallback)
+        evidence_dir = fallback
 
     captured: list[str] = []
     proc_dir = Path(f"/proc/{pid}")
@@ -174,24 +201,48 @@ def _capture_evidence(pid: int, output_dir: Optional[Path] = None) -> tuple[Opti
     except (OSError, shutil.Error):
         pass
 
-    # psutil supplementary info
+    # psutil supplementary info — BEST-EFFORT enrichment ONLY. Each accessor is
+    # isolated so a single failure degrades that ONE field to "unavailable" and
+    # NEVER aborts the containment pipeline. This block previously caught only
+    # (NoSuchProcess, AccessDenied); an AttributeError from proc.net_connections()
+    # (psutil <6.0 exposes proc.connections(), not net_connections()) propagated
+    # out, aborting containment AFTER SIGSTOP but BEFORE SIGKILL — a silent,
+    # complete containment failure surfaced by the evaluation harness.
     try:
-        proc = psutil.Process(pid)
+        proc: "Optional[psutil.Process]" = psutil.Process(pid)
+    except (psutil.NoSuchProcess, psutil.AccessDenied) as exc:
+        logger.warning("evidence: psutil.Process(%d) unavailable: %s", pid, exc)
+        proc = None
+
+    if proc is not None:
+        def _safe(field: str, fn):
+            """Call one psutil accessor; degrade to 'unavailable' on ANY error."""
+            try:
+                return fn()
+            except Exception as exc:  # noqa: BLE001 — never abort containment
+                logger.warning("evidence: %s for PID %d unavailable: %s",
+                               field, pid, exc)
+                return "unavailable"
+
         info = {
-            "name": proc.name(),
-            "exe": proc.exe(),
-            "cmdline": proc.cmdline(),
-            "open_files": [f.path for f in proc.open_files()],
-            "connections": [str(c) for c in proc.net_connections()],
-            "memory_info": proc.memory_info()._asdict(),
-            "cpu_times": proc.cpu_times()._asdict(),
-            "create_time": proc.create_time(),
+            "name": _safe("name", proc.name),
+            "exe": _safe("exe", proc.exe),
+            "cmdline": _safe("cmdline", proc.cmdline),
+            "open_files": _safe("open_files",
+                                lambda: [f.path for f in proc.open_files()]),
+            "connections": _safe("connections",
+                                 lambda: [str(c) for c in _proc_connections(proc)]),
+            "memory_info": _safe("memory_info", lambda: proc.memory_info()._asdict()),
+            "cpu_times": _safe("cpu_times", lambda: proc.cpu_times()._asdict()),
+            "create_time": _safe("create_time", proc.create_time),
         }
-        meta_file = evidence_dir / "psutil_info.txt"
-        meta_file.write_text(str(info))
-        captured.append(str(meta_file))
-    except (psutil.NoSuchProcess, psutil.AccessDenied):
-        pass
+        try:
+            meta_file = evidence_dir / "psutil_info.txt"
+            meta_file.write_text(str(info))
+            captured.append(str(meta_file))
+        except OSError as exc:
+            logger.warning("evidence: could not write psutil_info for PID %d: %s",
+                           pid, exc)
 
     logger.info("Evidence captured to %s (%d files)", evidence_dir, len(captured))
     return evidence_dir, captured
@@ -216,16 +267,6 @@ def _capture_evidence(pid: int, output_dir: Optional[Path] = None) -> tuple[Opti
 #   Forked children inherit cgroup membership at fork(), so the rule keeps
 #   covering the tree without racing PID enumeration. Sibling processes under
 #   the same UID are never in the cgroup, so they keep full network access.
-
-def _read_uid(pid: int) -> Optional[int]:
-    """Return the real UID of *pid* from /proc, or None if unreadable."""
-    try:
-        status = Path(f"/proc/{pid}/status").read_text()
-        uid_line = next(l for l in status.splitlines() if l.startswith("Uid:"))
-        return int(uid_line.split()[1])  # real UID is the first field
-    except (FileNotFoundError, StopIteration, ValueError, OSError):
-        return None
-
 
 def _agent_protected_pids() -> set[int]:
     """

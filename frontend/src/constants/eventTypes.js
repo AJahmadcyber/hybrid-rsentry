@@ -7,6 +7,9 @@ export const RULE_NAME = {
   CONTAINMENT_COMPLETE:  'Containment Verified',
   MARKOV_REPOSITION:     'Adaptive Canary Reposition',
   HEARTBEAT:             'System Heartbeat',
+  RANSOMWARE_RENAME:     'Ransomware File Extension Rename Detected',
+  RANSOMWARE_CREATED:    'Ransomware Encrypted File Created',
+  CANARY_DELETED:        'Canary File Deleted by Untrusted Process',
 };
 
 export const MITRE = {
@@ -15,4 +18,7 @@ export const MITRE = {
   PROCESS_ANOMALY:       [{ id: 'T1059', name: 'Command & Scripting Interpreter', tac: 'Execution' }],
   COMBINED_ALERT:        [{ id: 'T1486', name: 'Data Encrypted for Impact',       tac: 'Impact' }, { id: 'T1485', name: 'Data Destruction', tac: 'Impact' }],
   CONTAINMENT_TRIGGERED: [{ id: 'T1486', name: 'Data Encrypted for Impact',       tac: 'Impact' }],
+  RANSOMWARE_RENAME:     [{ id: 'T1486', name: 'Data Encrypted for Impact',       tac: 'Impact' }],
+  RANSOMWARE_CREATED:    [{ id: 'T1486', name: 'Data Encrypted for Impact',       tac: 'Impact' }],
+  CANARY_DELETED:        [{ id: 'T1485', name: 'Data Destruction',                tac: 'Impact' }],
 };

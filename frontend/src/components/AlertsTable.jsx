@@ -3,7 +3,6 @@ import { RULE_NAME, MITRE } from '../constants/eventTypes';
 
 const SEV_COLOR  = { CRITICAL: 'var(--crit)', HIGH: 'var(--high)', MEDIUM: 'var(--med)', LOW: 'var(--low)' };
 const SEV_BG     = { CRITICAL: 'var(--crit-bg)', HIGH: 'var(--high-bg)', MEDIUM: 'var(--med-bg)', LOW: 'var(--low-bg)' };
-const STATUS_LABEL = { true: 'Acknowledged', false: 'Open' };
 
 function riskColor(r) { return r >= 85 ? 'var(--crit)' : r >= 65 ? 'var(--high)' : r >= 45 ? 'var(--med)' : 'var(--low)'; }
 
@@ -117,7 +116,7 @@ export default function AlertsTable({ alerts, selectedId, onSelect, page, setPag
                   <td style={{ padding: '7px 12px', borderBottom: '1px solid var(--border-soft)', fontSize: 12, fontFamily: 'var(--mono)', color: 'var(--text-2)', whiteSpace: 'nowrap' }}>{alert.host_id}</td>
                   <td style={{ padding: '7px 12px', borderBottom: '1px solid var(--border-soft)', whiteSpace: 'nowrap' }}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: 'var(--mono)' }}>
-                      <span style={{ width: 42, height: 5, borderRadius: 3, background: '#2c2f37', overflow: 'hidden', display: 'inline-block' }}>
+                      <span style={{ width: 42, height: 5, borderRadius: 3, background: 'var(--border)', overflow: 'hidden', display: 'inline-block' }}>
                         <span style={{ display: 'block', height: '100%', borderRadius: 3, width: `${risk}%`, background: riskColor(risk) }} />
                       </span>
                       {risk}

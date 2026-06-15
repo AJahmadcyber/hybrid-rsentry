@@ -7,14 +7,45 @@ import HostsPage from './pages/HostsPage';
 import ReportsPage from './pages/ReportsPage';
 import FilesystemPage from './pages/FilesystemPage';
 import AIAnalystPage from './pages/AIAnalystPage';
+import ExceptionsPage from './pages/ExceptionsPage';
 import { useWebSocket } from './hooks/useWebSocket';
 
 const AI_EXPIRY_MS = 4 * 60 * 1000;
 const AI_PENDING_TIMEOUT_MS = 45 * 1000;
 const AI_TRIGGER_SEVERITIES = new Set(['CRITICAL', 'HIGH', 'MEDIUM']);
 
+function _beep() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.4);
+  } catch (_) {}
+}
+
 export default function App() {
   const [page, setPage] = useState('dashboard');
+  const [theme, setTheme] = useState(() => {
+    const saved = localStorage.getItem('rsentry-theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', saved);
+    return saved;
+  });
+
+  const toggleTheme = useCallback(() => {
+    setTheme(prev => {
+      const next = prev === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem('rsentry-theme', next);
+      return next;
+    });
+  }, []);
   const [alertBadgeCount, setAlertBadgeCount] = useState(0);
   const [liveAlert, setLiveAlert] = useState(null);
   const [liveEvent, setLiveEvent] = useState(null);
@@ -33,7 +64,11 @@ export default function App() {
   const [latestAiResult, setLatestAiResult] = useState(null);
 
   const handleWsMessage = useCallback((msg) => {
-    if (msg.type === 'new_alert') { setLiveAlert(msg); setAlertBadgeCount(n => n + 1); }
+    if (msg.type === 'new_alert') {
+      setLiveAlert(msg);
+      setAlertBadgeCount(n => n + 1);
+      if (msg.severity === 'CRITICAL') _beep();
+    }
     if (msg.type === 'new_event') {
       setLiveEvent(msg);
       if (AI_TRIGGER_SEVERITIES.has(msg.severity)) {
@@ -119,6 +154,7 @@ export default function App() {
         />
       );
       case 'reports':    return <ReportsPage />;
+      case 'exceptions': return <ExceptionsPage />;
       default:           return <Overview liveAlert={liveAlert} liveEvent={liveEvent} connected={connected} />;
     }
   };
@@ -130,7 +166,7 @@ export default function App() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg)', overflow: 'hidden' }}>
-      <TopBar activePage={page} onNavigate={handleNavigate} connected={connected} alertCount={alertBadgeCount} />
+      <TopBar activePage={page} onNavigate={handleNavigate} connected={connected} alertCount={alertBadgeCount} theme={theme} onThemeToggle={toggleTheme} />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
         {renderPage()}
       </div>

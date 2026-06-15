@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from backend.models.database import engine
-from backend.routers import events, alerts, hosts, ws
+from backend.routers import events, alerts, hosts, ws, exceptions, simulate
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Hybrid R-Sentry API",
     description="Ransomware detection backend — event ingestion, alert management, live WS push.",
-    version="1.0.0",
+    version="2.2.0",
     lifespan=lifespan,
 )
 
@@ -70,16 +70,23 @@ app.include_router(events.router)
 app.include_router(alerts.router)
 app.include_router(hosts.router)
 app.include_router(ws.router)
+app.include_router(exceptions.router)
+app.include_router(simulate.router)
 
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "hybrid-rsentry-backend"}
+    import os
+    return {
+        "status": "ok",
+        "service": "hybrid-rsentry-backend",
+        "sensor_backend": os.getenv("SENSOR_BACKEND", "ebpf"),
+    }
 
 
 @app.get("/")
 async def root():
-    return {"message": "Hybrid R-Sentry API v1.0.0 — /docs for Swagger UI"}
+    return {"message": "Hybrid R-Sentry API v2.2.0 — /docs for Swagger UI"}
 
 
 class HealthCheckRequest(BaseModel):

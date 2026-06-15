@@ -57,6 +57,14 @@ echo "    Celery started (pid $CELERY_PID)."
 
 # ── 4. Agent ──────────────────────────────────────────────────────────────────
 echo "==> [4/5] Starting agent (sudo required)..."
+# Pre-flight: switch to inotify if kernel headers are missing so the agent
+# doesn't crash on systems where linux-headers-$(uname -r) isn't installed.
+if [ ! -d "/lib/modules/$(uname -r)/build" ]; then
+    echo "    WARNING: kernel headers not found for $(uname -r)."
+    echo "    Switching to inotify backend (no BPF compile needed)."
+    echo "    To enable eBPF: sudo apt install linux-headers-\$(uname -r)"
+    export SENSOR_BACKEND=inotify
+fi
 sudo -E "$REPO_DIR/venv/bin/python" -m agent.monitor &> /tmp/rsentry-agent.log &
 AGENT_PID=$!
 sleep 3

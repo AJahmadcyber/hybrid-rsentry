@@ -7,9 +7,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-CANARY_PREFIX = "AAA_"
 CANARY_SUFFIX = ".txt"
-CANARY_CONTENT = "RSENTRY_CANARY_DO_NOT_MODIFY"
 CANARY_COUNT = int(os.getenv("CANARY_COUNT", "30"))
 
 # Feature 3: realistic decoy headers so ransomware that samples magic bytes /
@@ -85,7 +83,7 @@ class FilesystemGraph:
                         queue.append(e)
         return dirs
 
-    def place_canaries(self, strategy: str = "bfs") -> list[Path]:
+    def place_canaries(self) -> list[Path]:
         """Place CANARY_COUNT canary files spread across the directory tree."""
         self._cleanup_old_canaries()
         dirs = self._bfs_dirs() or [self.root]

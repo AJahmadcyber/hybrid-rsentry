@@ -24,13 +24,10 @@ NVIDIA_BASE_URL   = "https://integrate.api.nvidia.com/v1"
 NVIDIA_MODEL      = "meta/llama-3.1-70b-instruct"
 CEREBRAS_BASE_URL = "https://api.cerebras.ai/v1"
 CEREBRAS_MODEL    = "llama3.1-70b"
-GROQ_RATE_DELAY     = 0.5  # سريع
-CEREBRAS_RATE_DELAY = 0.5  # الأسرع
 NVIDIA_RATE_DELAY   = 3.0  # أبطأ
 
 # Rate limit Redis keys — one per provider
 _RATE_KEY_NVIDIA   = "rsentry:nvidia_last_call"
-_RATE_KEY_CEREBRAS = "rsentry:cerebras_last_call"
 
 _client_events   = None   # for live event analysis
 _client_alerts   = None   # for alert analysis
@@ -65,33 +62,34 @@ def _get_redis():
     return _redis
 
 
+def _make_openai_client(env_key: str, env_fallback: str, error_msg: str):
+    key = os.getenv(env_key, os.getenv(env_fallback, ""))
+    if not key:
+        raise RuntimeError(error_msg)
+    if key.startswith("gsk_"):
+        client = OpenAI(base_url=GROQ_BASE_URL, api_key=key)
+        client._model = GROQ_MODEL
+    else:
+        client = OpenAI(base_url=NVIDIA_BASE_URL, api_key=key)
+        client._model = NVIDIA_MODEL
+    return client
+
+
 def _get_client_events():
     global _client_events
     if _client_events is None:
-        key = os.getenv("AI_API_KEY", os.getenv("NVIDIA_API_KEY", ""))
-        if not key:
-            raise RuntimeError("AI_API_KEY not set in environment")
-        if key.startswith("gsk_"):
-            _client_events = OpenAI(base_url="https://api.groq.com/openai/v1", api_key=key)
-            _client_events._model = "llama-3.3-70b-versatile"
-        else:
-            _client_events = OpenAI(base_url=NVIDIA_BASE_URL, api_key=key)
-            _client_events._model = NVIDIA_MODEL
+        _client_events = _make_openai_client(
+            "AI_API_KEY", "NVIDIA_API_KEY", "AI_API_KEY not set in environment"
+        )
     return _client_events
 
 
 def _get_client_alerts():
     global _client_alerts
     if _client_alerts is None:
-        key = os.getenv("AI_API_KEY_ALERTS", os.getenv("NVIDIA_API_KEY_ALERTS", ""))
-        if not key:
-            raise RuntimeError("AI_API_KEY_ALERTS not set in environment")
-        if key.startswith("gsk_"):
-            _client_alerts = OpenAI(base_url="https://api.groq.com/openai/v1", api_key=key)
-            _client_alerts._model = "llama-3.3-70b-versatile"
-        else:
-            _client_alerts = OpenAI(base_url=NVIDIA_BASE_URL, api_key=key)
-            _client_alerts._model = NVIDIA_MODEL
+        _client_alerts = _make_openai_client(
+            "AI_API_KEY_ALERTS", "NVIDIA_API_KEY_ALERTS", "AI_API_KEY_ALERTS not set in environment"
+        )
     return _client_alerts
 
 

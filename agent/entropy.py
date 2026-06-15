@@ -66,11 +66,6 @@ class EntropyRecord:
             return 0.0
         return self._samples[-1][1]
 
-    def as_series(self) -> pd.Series:
-        if not self._samples:
-            return pd.Series(dtype=float)
-        ts, vals = zip(*self._samples)
-        return pd.Series(vals, index=pd.to_datetime(ts, unit="s"), dtype=float)
 
 
 class EntropyEngine:

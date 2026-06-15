@@ -51,11 +51,11 @@ Wait until: `celery@hostname ready.`
 
 ### Terminal 4 — Agent (file monitor)
 
-**eBPF sensor (default — requires kernel ≥ 6.19 and `lsm=bpf` boot param):**
+**eBPF sensor (default — requires kernel ≥ 6.19; `lsm=bpf` boot param is optional and enables inline blocking):**
 ```bash
 cd ~/hybrid-rsentry && set -a && source .env && set +a && sudo -E ~/hybrid-rsentry/venv/bin/python -m agent.monitor
 ```
-Wait until: `[ebpf] mode=enforce lsm=True …` then `[ebpf] BPF loaded.`
+Wait until: `[ebpf] BPF loaded.` (with `lsm=bpf`: `[ebpf] mode=enforce lsm=True …`; without it: `mode=sigstop`)
 
 **inotify fallback (any kernel, no BCC required):**
 ```bash
@@ -172,7 +172,6 @@ docker exec -it rsentry_postgres psql -U rsentry -d rsentry_db \
 1. **WATCH_PATH must be outside `~/hybrid-rsentry`** — canary files (AAA_*.txt) corrupt git refs if placed inside the project.
 2. **Never run `docker compose down -v`** — the `-v` flag deletes the Postgres data volume permanently.
 3. **Never edit `.env.example` thinking it is `.env`** — real secrets live in `.env` (gitignored).
-4. **Never run `npm audit fix --force`** — installs `react-scripts@0.0.0` and breaks the entire frontend build.
 
 ---
 

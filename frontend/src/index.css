@@ -28,6 +28,53 @@
   --sans: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
 }
 
+[data-theme="light"] {
+  --bg: #f1f5f9;
+  --panel: #ffffff;
+  --panel-2: #f8fafc;
+  --panel-3: #e2e8f0;
+  --border: #cbd5e1;
+  --border-soft: #e2e8f0;
+  --text: #0f172a;
+  --text-2: #1e293b;
+  --muted: #64748b;
+  --faint: #94a3b8;
+  --accent: #2563eb;
+  --accent-dim: rgba(37, 99, 235, 0.10);
+  --crit: #dc2626;
+  --high: #ea580c;
+  --med: #ca8a04;
+  --low: #2563eb;
+  --ok: #16a34a;
+  --crit-bg: rgba(220, 38, 38, 0.08);
+  --high-bg: rgba(234, 88, 12, 0.08);
+  --med-bg: rgba(202, 138, 4, 0.08);
+  --low-bg: rgba(37, 99, 235, 0.08);
+}
+
+[data-theme="light"] ::-webkit-scrollbar-thumb { background: #c8cad2; }
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: #b0b3bc; }
+[data-theme="light"] .siem-nav-btn.active { color: #1a1d24; }
+
+/* Tailwind dark class overrides for light theme */
+[data-theme="light"] .bg-gray-900  { background-color: var(--panel) !important; }
+[data-theme="light"] .bg-gray-800  { background-color: var(--panel-2) !important; }
+[data-theme="light"] .bg-gray-700  { background-color: var(--panel-3) !important; }
+[data-theme="light"] .border-gray-600,
+[data-theme="light"] .border-gray-700 { border-color: var(--border) !important; }
+[data-theme="light"] .text-white    { color: var(--text) !important; }
+[data-theme="light"] .text-gray-100,
+[data-theme="light"] .text-gray-200,
+[data-theme="light"] .text-gray-300 { color: var(--text-2) !important; }
+[data-theme="light"] .text-gray-400,
+[data-theme="light"] .text-gray-500 { color: var(--muted) !important; }
+[data-theme="light"] .text-gray-600,
+[data-theme="light"] .text-gray-700 { color: var(--faint) !important; }
+[data-theme="light"] .hover\:bg-gray-600:hover { background-color: var(--panel-3) !important; }
+[data-theme="light"] .bg-indigo-600 { background-color: var(--accent) !important; }
+[data-theme="light"] .bg-red-950\/20 { background-color: var(--crit-bg) !important; }
+[data-theme="light"] .border-red-800 { border-color: rgba(216,80,60,0.4) !important; }
+
 * { box-sizing: border-box; }
 
 html, body {

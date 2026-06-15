@@ -1,6 +1,6 @@
 # Project Architecture Reference
 
-**Last updated:** 2026-05-22
+**Last updated:** 2026-06-13
 
 ---
 
@@ -8,7 +8,7 @@
 
 A ransomware detection system for Linux endpoints combining multiple detection layers:
 
-- **Canary files** (`AAA_*.txt`) — bait files that trigger CRITICAL alert if touched or deleted
+- **Canary files** (`AAA_`/`aaa_`/`ZZZ_`/`zzz_` prefixes, `.txt`) — bait files that trigger CRITICAL alert if touched or deleted
 - **Shannon entropy delta** — detects file encryption activity via rolling window
 - **Markov chain repositioning** — moves canary files to predicted access hotspots
 - **Process lineage scoring** — scores suspicious process ancestry
@@ -23,9 +23,9 @@ A ransomware detection system for Linux endpoints combining multiple detection l
 | Backend API | FastAPI + SQLAlchemy async + PostgreSQL |
 | Async tasks | Celery + Redis as broker/backend |
 | Real-time push | WebSocket (FastAPI) + Redis pub/sub |
-| Agent | Python watchdog + psutil + scipy/numpy (entropy) + networkx (Markov) |
-| AI analysis | NVIDIA API (OpenAI-compatible) — `meta/llama-3.1-70b-instruct` |
-| Frontend | React 18 + Recharts + Tailwind CSS |
+| Agent | Python watchdog + eBPF/BCC sensor + psutil + scipy/numpy (entropy) + networkx (Markov) |
+| AI analysis | Cerebras → NVIDIA → Groq fallback chain (OpenAI-compatible) |
+| Frontend | React 19 + Vite 5 + Recharts + Tailwind CSS |
 | Infrastructure | Docker Compose (Postgres + Redis) + Python 3.13 venv on Kali |
 
 ---
@@ -121,13 +121,13 @@ When watchdog detects the file moves (pid=0, sub_type="moved"), `events.py` reco
 
 ## AI analysis paths
 
-Two separate NVIDIA API keys to avoid rate limit cross-blocking:
+Two separate API keys to avoid rate limit cross-blocking (each key uses Cerebras → NVIDIA → Groq fallback):
 
 | Path | Key | Task | When triggered |
 |---|---|---|---|
-| Live event analysis | `NVIDIA_API_KEY` | `analyze_event_ai` | Every CRITICAL/HIGH/MEDIUM event |
-| On-demand analysis | `NVIDIA_API_KEY_ALERTS` | `analyze_alert_ai` | User clicks "AI Analyze" on Alerts page |
-| Health check | `NVIDIA_API_KEY` | `analyze_health_ai` | User clicks "Run System Health Check" |
+| Live event analysis | `AI_API_KEY` (alias `NVIDIA_API_KEY`) | `analyze_event_ai` | Every CRITICAL/HIGH/MEDIUM event |
+| On-demand analysis | `AI_API_KEY_ALERTS` (alias `NVIDIA_API_KEY_ALERTS`) | `analyze_alert_ai` | User clicks "AI Analyze" on Alerts page |
+| Health check | `AI_API_KEY` | `analyze_health_ai` | User clicks "Run System Health Check" |
 
 ---
 
@@ -142,7 +142,7 @@ backend/routers/alerts.py        — Alert CRUD, /counts, ACK, analyze, evidence
 backend/routers/hosts.py         — Host list, risk summary (alert_count + event_count), contain/release
 backend/routers/ws.py            — WebSocket, subscribes to 3 Redis channels, ping/pong
 backend/workers/tasks.py         — All Celery tasks; reads .env via _env() for broker/db config
-backend/services/ai_analyst.py   — NVIDIA LLM calls, dual-key rate limiting via Redis Lua script
+backend/services/ai_analyst.py   — Multi-provider AI: Cerebras → NVIDIA → Groq fallback; dual-key (_events / _alerts)
 
 agent/monitor.py                 — Main watchdog; coordinates all modules, heartbeat, reposition loop
 agent/containment.py             — SIGSTOP → /proc evidence → iptables → SIGKILL pipeline

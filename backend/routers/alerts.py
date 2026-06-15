@@ -2,12 +2,15 @@
 alerts.py — Alert management endpoints + evidence retrieval.
 """
 import asyncio
+import csv
+import io
 import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, desc, func
+from fastapi.responses import StreamingResponse
+from sqlalchemy import select, desc, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.models.database import get_db
@@ -124,6 +127,146 @@ async def list_alerts_with_events(
             "details":      event.details or {},
         })
     return result
+
+@router.post("/clear-all")
+async def clear_all_alerts(db: AsyncSession = Depends(get_db)):
+    """Acknowledge all open alerts and set resolved_at — equivalent to the manual SQL clear command."""
+    now = datetime.now(timezone.utc)
+    result = await db.execute(
+        update(Alert)
+        .where(Alert.acknowledged == False)  # noqa: E712
+        .values(acknowledged=True, resolved_at=now)
+        .returning(Alert.host_id)
+    )
+    host_ids = list({row[0] for row in result.fetchall()})
+    await db.commit()
+    from backend.workers.tasks import update_host_risk
+    for host_id in host_ids:
+        update_host_risk.delay(host_id)
+    return {"cleared": len(host_ids) > 0, "hosts_updated": len(host_ids)}
+
+
+@router.post("/acknowledge-all")
+async def acknowledge_all_alerts(db: AsyncSession = Depends(get_db)):
+    """Bulk-acknowledge every open alert and trigger risk recalculation for all affected hosts."""
+    host_rows = (await db.execute(
+        select(Alert.host_id).where(Alert.acknowledged == False).distinct()  # noqa: E712
+    )).scalars().all()
+    now = datetime.now(timezone.utc)
+    await db.execute(
+        update(Alert)
+        .where(Alert.acknowledged == False)  # noqa: E712
+        .values(acknowledged=True, resolved_at=now)
+    )
+    await db.commit()
+    from backend.workers.tasks import update_host_risk
+    for host_id in host_rows:
+        update_host_risk.delay(host_id)
+    return {"acknowledged": len(host_rows) > 0, "hosts_updated": len(host_rows)}
+
+
+_EXPORT_HEADERS = [
+    "Alert ID", "Host", "Severity", "Status",
+    "Detected At", "Resolved At",
+    "Event Type", "Event Time", "PID", "Process",
+    "File Path", "Entropy Delta", "Lineage Score", "Canary Hit",
+]
+
+
+def _fmt_dt(dt):
+    return dt.strftime("%Y-%m-%d %H:%M:%S UTC") if dt else ""
+
+
+def _yn(val):
+    return "Yes" if val else "No"
+
+
+async def _fetch_export_rows(db, severity, acknowledged, limit):
+    stmt = (
+        select(Alert, Event)
+        .join(Event, Alert.event_id == Event.id)
+        .order_by(desc(Alert.created_at))
+        .limit(limit)
+    )
+    if severity and severity != "ALL":
+        stmt = stmt.where(Alert.severity == severity)
+    if acknowledged is not None:
+        stmt = stmt.where(Alert.acknowledged == acknowledged)
+    rows = (await db.execute(stmt)).all()
+    data = []
+    for alert, event in rows:
+        data.append([
+            str(alert.id)[:8],
+            alert.host_id,
+            alert.severity.value,
+            "Acknowledged" if alert.acknowledged else "Open",
+            _fmt_dt(alert.created_at),
+            _fmt_dt(alert.resolved_at),
+            event.event_type.value if event else "",
+            _fmt_dt(event.timestamp) if event else "",
+            str(event.pid) if event else "",
+            event.process_name if event else "",
+            event.file_path if event else "",
+            f"{event.entropy_delta:.2f}" if event and event.entropy_delta is not None else "",
+            f"{event.lineage_score:.2f}" if event and event.lineage_score is not None else "",
+            _yn(event.canary_hit) if event else "",
+        ])
+    return data
+
+
+@router.get("/export/csv")
+async def export_alerts_csv(
+    severity: Optional[str] = Query(None),
+    acknowledged: Optional[bool] = Query(None),
+    limit: int = Query(1000, le=5000),
+    db: AsyncSession = Depends(get_db),
+):
+    """Export alerts as a standard CSV file (opens in Excel / Google Sheets)."""
+    data_rows = await _fetch_export_rows(db, severity, acknowledged, limit)
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(_EXPORT_HEADERS)
+    writer.writerows(data_rows)
+    buf.seek(0)
+    filename = f"rsentry-alerts-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.csv"
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@router.get("/export/txt")
+async def export_alerts_txt(
+    severity: Optional[str] = Query(None),
+    acknowledged: Optional[bool] = Query(None),
+    limit: int = Query(1000, le=5000),
+    db: AsyncSession = Depends(get_db),
+):
+    """Export alerts as a human-readable aligned text table."""
+    data_rows = await _fetch_export_rows(db, severity, acknowledged, limit)
+    col_widths = [len(h) for h in _EXPORT_HEADERS]
+    for row in data_rows:
+        for i, cell in enumerate(row):
+            col_widths[i] = max(col_widths[i], len(str(cell)))
+
+    def _pad_row(cells):
+        return "  |  ".join(str(c).ljust(col_widths[i]) for i, c in enumerate(cells))
+
+    separator = "-+-".join("-" * (w + 2) for w in col_widths)
+    buf = io.StringIO()
+    buf.write(_pad_row(_EXPORT_HEADERS) + "\n")
+    buf.write(separator + "\n")
+    for row in data_rows:
+        buf.write(_pad_row(row) + "\n")
+    buf.seek(0)
+    filename = f"rsentry-alerts-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.txt"
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/plain",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
 
 @router.get("/{alert_id}", response_model=AlertResponse)
 async def get_alert(alert_id: uuid.UUID, db: AsyncSession = Depends(get_db)):

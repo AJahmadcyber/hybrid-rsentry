@@ -2,6 +2,7 @@
 lineage.py — psutil process ancestry scorer.
 Returns a suspicion score 0–100 based on parent names, spawn path, and SHA-256 hash.
 """
+import glob
 import hashlib
 import logging
 import os
@@ -46,7 +47,7 @@ BENIGN_PARENTS = {
 WEIGHT_SUSPICIOUS_PARENT = 30
 WEIGHT_SUSPICIOUS_PATH = 25
 WEIGHT_DEEP_ANCESTRY = 15
-WEIGHT_HASH_MISMATCH = 20
+WEIGHT_EXE_UNREADABLE = 20
 WEIGHT_NO_TTY = 2  # قللناه لأن معظم background processes بدون TTY
 WEIGHT_RAPID_SPAWN = 5
 
@@ -136,7 +137,6 @@ def _load_dpkg_hashes() -> dict[str, str]:
     Parse all /var/lib/dpkg/info/*.md5sums into {absolute_path: md5}.
     Each line format:  '<md5>  <relative_path>'
     """
-    import glob
     hashes: dict[str, str] = {}
     for md5file in glob.glob("/var/lib/dpkg/info/*.md5sums"):
         try:
@@ -264,7 +264,7 @@ def score_process(pid: int) -> Optional[ProcessLineage]:
     if lineage.exe:
         lineage.sha256 = _sha256_of_exe(lineage.exe)
         if lineage.sha256 is None:
-            score += WEIGHT_HASH_MISMATCH * 0.5
+            score += WEIGHT_EXE_UNREADABLE * 0.5
             lineage.reasons.append("exe_unreadable")
         else:
             verdict = verify_against_dpkg(lineage.exe)

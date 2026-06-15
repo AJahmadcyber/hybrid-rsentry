@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { getHosts, getHostRisk, containHost, releaseHost } from '../api/client';
+import { getHosts, getHostRisk, containHost, releaseHost, getEvents } from '../api/client';
 import { RadialBarChart, RadialBar, ResponsiveContainer } from 'recharts';
 
 const RISK_COLOR = (score) => {
@@ -15,6 +15,48 @@ const RISK_LABEL = (score) => {
   if (score >= 25) return { label: 'MEDIUM', cls: 'text-yellow-400' };
   return { label: 'LOW', cls: 'text-green-400' };
 };
+
+const SEV_DOT = { CRITICAL: '#ef4444', HIGH: '#f97316', MEDIUM: '#eab308', LOW: '#60a5fa' };
+
+function HostTimeline({ hostId }) {
+  const [events, setEvents] = useState([]);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    getEvents({ host_id: hostId, limit: 10 })
+      .then(r => setEvents(r.data))
+      .catch(() => {});
+  }, [open, hostId]);
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        style={{ fontSize: 11, color: 'var(--muted, #6b7280)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+        <i className={`fa-solid fa-chevron-${open ? 'up' : 'down'}`} style={{ fontSize: 9 }} />
+        Recent events
+      </button>
+      {open && (
+        <div style={{ marginTop: 8, borderTop: '1px solid var(--border-soft)', paddingTop: 8, maxHeight: 160, overflowY: 'auto' }}>
+          {events.length === 0 ? (
+            <p style={{ fontSize: 11, color: 'var(--muted)' }}>No events yet.</p>
+          ) : events.map(ev => (
+            <div key={ev.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: SEV_DOT[ev.severity] || 'var(--muted)', flexShrink: 0 }} />
+              <span style={{ fontSize: 10, color: 'var(--muted)', flexShrink: 0, fontFamily: 'monospace' }}>
+                {ev.timestamp ? new Date(ev.timestamp).toLocaleTimeString() : '—'}
+              </span>
+              <span style={{ fontSize: 11, color: 'var(--text)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {ev.event_type} {ev.file_path ? `· ${ev.file_path.split('/').pop()}` : ''}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function HostsPage() {
   const [hosts, setHosts] = useState([]);
@@ -100,7 +142,7 @@ export default function HostsPage() {
                         data={[{ value: score, fill: color }]}
                         startAngle={90} endAngle={-270}
                       >
-                        <RadialBar dataKey="value" background={{ fill: '#374151' }} />
+                        <RadialBar dataKey="value" background={{ fill: document.documentElement.dataset.theme === 'light' ? '#cbd5e1' : '#374151' }} />
                       </RadialBarChart>
                     </ResponsiveContainer>
                   </div>
@@ -121,6 +163,8 @@ export default function HostsPage() {
                     <p className="text-white">{risk?.alert_count ?? '—'}</p>
                   </div>
                 </div>
+
+                <HostTimeline hostId={host.host_id} />
 
                 <button
                   onClick={() => handleContain(host.host_id, host.is_contained)}
