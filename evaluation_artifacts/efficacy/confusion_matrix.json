@@ -1,0 +1,132 @@
+{
+  "_meta": {
+    "warmup_excluded": 3,
+    "n_total": 270,
+    "n_malicious": 120,
+    "n_benign": 150,
+    "n_per_group": 30,
+    "completeness": {
+      "by_group": {
+        "akira": {
+          "planned": 30,
+          "ran": 30,
+          "missing": [],
+          "errored": []
+        },
+        "qilin": {
+          "planned": 30,
+          "ran": 30,
+          "missing": [],
+          "errored": []
+        },
+        "lockbit": {
+          "planned": 30,
+          "ran": 30,
+          "missing": [],
+          "errored": []
+        },
+        "entropy_only": {
+          "planned": 30,
+          "ran": 30,
+          "missing": [],
+          "errored": []
+        },
+        "high_entropy": {
+          "planned": 30,
+          "ran": 30,
+          "missing": [],
+          "errored": []
+        },
+        "bulk_ops": {
+          "planned": 30,
+          "ran": 30,
+          "missing": [],
+          "errored": []
+        },
+        "editor_save": {
+          "planned": 30,
+          "ran": 30,
+          "missing": [],
+          "errored": []
+        },
+        "batch_rename": {
+          "planned": 30,
+          "ran": 30,
+          "missing": [],
+          "errored": []
+        },
+        "idle": {
+          "planned": 30,
+          "ran": 30,
+          "missing": [],
+          "errored": []
+        }
+      },
+      "planned": 270,
+      "ran": 270,
+      "missing": 0,
+      "errored": 0,
+      "complete": true
+    },
+    "complete": true,
+    "generated": "2026-06-15T07:36:05+00:00",
+    "ci_note": "proportions: Wilson 1927 95%; f1: Efron 1979 bootstrap 95%",
+    "denominator_note": "metrics computed over RECORDED trials; see completeness for planned-vs-ran reconciliation \u2014 recall/precision are NOT over the full planned N unless complete=true"
+  },
+  "TP": 120,
+  "FP": 0,
+  "TN": 150,
+  "FN": 0,
+  "metrics": {
+    "recall": {
+      "value": 1.0,
+      "ci": [
+        0.9689808335812966,
+        1.0
+      ]
+    },
+    "precision": {
+      "value": 1.0,
+      "ci": [
+        0.9689808335812966,
+        1.0
+      ]
+    },
+    "f1": {
+      "value": 1.0,
+      "ci": [
+        1.0,
+        1.0
+      ],
+      "ci_method": "bootstrap"
+    },
+    "accuracy": {
+      "value": 1.0,
+      "ci": [
+        0.9859719604283536,
+        1.0
+      ]
+    },
+    "fpr": {
+      "value": 0.0,
+      "ci": [
+        0.0,
+        0.024970244368076586
+      ]
+    },
+    "fnr": {
+      "value": 0.0,
+      "ci": [
+        0.0,
+        0.031019166418703472
+      ]
+    },
+    "specificity": {
+      "value": 1.0,
+      "ci": [
+        0.9750297556319235,
+        1.0
+      ]
+    }
+  }
+}

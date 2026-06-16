@@ -1,0 +1,38 @@
+# Efficacy report — source: /home/kali/hybrid-rsentry/tests/evaluation/results/trials_raw.json (273 raw trial records)
+
+[EFFICACY] Completeness: COMPLETE  (ran 270/270 planned; missing=0, errored=0)
+
+[EFFICACY] Confusion Matrix  (D = Detection, §0.2/§1.2)
+|                  | Predicted: Detected | Predicted: Not-Detected | N   |
+|------------------|---------------------|-------------------------|-----|
+| Actual MALICIOUS | TP = 120            | FN = 0                  | 120 |
+| Actual BENIGN    | FP = 0              | TN = 150                | 150 |
+(N total = 270; warmup_excluded = 3)
+
+[EFFICACY] Core Metrics  (Wilson 95% CI; F1 = bootstrap 95%)
+| Metric       | Formula    | Value | 95% CI                |
+|--------------|------------|-------|-----------------------|
+| Recall (TPR) | TP/(TP+FN) | 1.000 | [0.969, 1.000]        |
+| Precision    | TP/(TP+FP) | 1.000 | [0.969, 1.000]        |
+| F1           | 2PR/(P+R)  | 1.000 | [1.000, 1.000] (boot) |
+| Accuracy     | (TP+TN)/N  | 1.000 | [0.986, 1.000]        |
+| FPR          | FP/(FP+TN) | 0.000 | [0.000, 0.025]        |
+| FNR          | FN/(FN+TP) | 0.000 | [0.000, 0.031]        |
+| Specificity  | TN/(TN+FP) | 1.000 | [0.975, 1.000]        |
+
+[EFFICACY] Per-Family Detection Rate
+| Family       | N  | Detected | Rate  | 95% CI         | Modal Layer | Layer Distribution | Ran/Planned |
+|--------------|----|----------|-------|----------------|-------------|--------------------|-------------|
+| akira        | 30 | 30       | 1.000 | [0.886, 1.000] | rename      | rename:30          | 30/30       |
+| qilin        | 30 | 30       | 1.000 | [0.886, 1.000] | rename      | rename:30          | 30/30       |
+| lockbit      | 30 | 30       | 1.000 | [0.886, 1.000] | rename      | rename:30          | 30/30       |
+| entropy_only | 30 | 30       | 1.000 | [0.886, 1.000] | entropy     | entropy:30         | 30/30       |
+
+[EFFICACY] Benign Breakdown  (FPR per class; lower is better)
+| Class                                               | N  | FP | FPR   | 95% CI         | Ran/Planned |
+|-----------------------------------------------------|----|----|-------|----------------|-------------|
+| high_entropy  *** HEADLINE (compression/encryption) | 30 | 0  | 0.000 | [0.000, 0.114] | 30/30       |
+| bulk_ops                                            | 30 | 0  | 0.000 | [0.000, 0.114] | 30/30       |
+| editor_save                                         | 30 | 0  | 0.000 | [0.000, 0.114] | 30/30       |
+| batch_rename                                        | 30 | 0  | 0.000 | [0.000, 0.114] | 30/30       |
+| idle                                                | 30 | 0  | 0.000 | [0.000, 0.114] | 30/30       |
