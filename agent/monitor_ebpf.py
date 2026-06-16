@@ -40,6 +40,19 @@ from typing import Callable, Dict, List, Optional, Set
 
 logger = logging.getLogger(__name__)
 
+# Robustness axis §3 — per-layer ablation. Each ABLATE_<LAYER>=1 env var
+# suppresses ONLY that layer's decision output (kernel arming/deny via build_bpf,
+# userspace containment via run_sensor); the probe, score and event still fire so
+# attribution can record "would have fired". Read once at agent startup. Passed
+# via env (clean through `sudo -E`, no argv-ordering fragility).
+_ABLATABLE_LAYERS = ("rename", "write_offset", "entropy", "canary")
+
+
+def _read_ablation() -> Dict[str, bool]:
+    """Return {layer: True} for each ABLATE_<LAYER>=1 environment variable."""
+    return {layer: os.getenv(f"ABLATE_{layer.upper()}", "0") == "1"
+            for layer in _ABLATABLE_LAYERS}
+
 # ---------------------------------------------------------------------------
 # IGNORE_COMMS — never alert or contain these process names
 # ---------------------------------------------------------------------------
@@ -647,7 +660,8 @@ def seed_canaries(
 # BPF C source generator
 # ---------------------------------------------------------------------------
 
-def build_bpf(enforce: bool = True, lsm: bool = False) -> str:
+def build_bpf(enforce: bool = True, lsm: bool = False,
+              ablate: Optional[Dict[str, bool]] = None) -> str:
     """
     Full kernel-space behavioral detection — system-wide:
     - TRACEPOINT rename:  velocity + canary
@@ -661,22 +675,43 @@ def build_bpf(enforce: bool = True, lsm: bool = False) -> str:
     # Conditional kernel-block snippets are hoisted into locals so the f-string
     # expression parts contain no backslashes (required for Python 3.11 compat —
     # PEP 701 backslash-in-f-string only lands in 3.12+).
+    # ── Ablation gates (Robustness axis §3) ──────────────────────────────────
+    # Each layer's DECISION is independently suppressible: the kernel arming / LSM
+    # deny here, and the userspace containment in run_sensor. When a layer is
+    # ablated the probe STILL fires, the score is STILL computed, and the event is
+    # STILL emitted (attribution / "would have fired") — only the decision OUTPUT
+    # (arm + deny + contain) is gated. Canary SEEDING/registration is never
+    # affected, so filesystem state is invariant across conditions.
+    _ab = ablate or {}
+    a_rename = bool(_ab.get("rename"))
+    a_write = bool(_ab.get("write_offset"))
+    a_canary = bool(_ab.get("canary"))
+
     _block_on_velocity = (
         "u8 one = 1;\n    if (new_cnt >= VELOCITY_THRESHOLD) "
         "{ blocked_pids.update(&pid, &one); }"
-    ) if (enforce and lsm) else ""
+    ) if (enforce and lsm and not a_rename) else ""
     _block_on_rename_score = (
         "u8 blk = 1; if (p->score >= 85) { blocked_pids.update(&pid, &blk); }"
-    ) if (enforce and lsm) else ""
+    ) if (enforce and lsm and not a_rename) else ""
     _block_on_write_score = (
         "u8 blk = 1; if (p->score >= SCORE_BLOCK) { blocked_pids.update(&pid, &blk); }"
-    ) if (enforce and lsm) else ""
-    # W1/BUG 3: arming on a canary write happens in enforce mode regardless of
-    # LSM availability — the SIGSTOP fallback needs the PID frozen too.
+    ) if (enforce and lsm and not a_write) else ""
+    # NONSEQ silent-encryption kernel arming (originally unconditional). silent_enc
+    # is still set so the event still emits; only the blocked_pids arm is gated.
+    _arm_nonseq = ("u8 _one = 1; blocked_pids.update(&pid, &_one);"
+                   if not a_write else "")
+    # W1/BUG 3: canary-write arming (enforce regardless of LSM); gated by canary.
     _block_on_canary_write = (
         "u8 _cone = 1; blocked_pids.update(&pid, &_cone);"
-    ) if enforce else ""
-    _lsm_hook = "" if not (enforce and lsm) else """
+    ) if (enforce and not a_canary) else ""
+    # LSM canary deny actions — the __emit_canary_attempt ALWAYS runs (attribution);
+    # the deny + arm runs only when canary is NOT ablated (else: allow).
+    _canary_rename_action = ("" if a_canary else
+        "u8 one = 1; blocked_pids.update(&pid, &one); return -EPERM;")
+    _canary_write_action = ("return 0;" if a_canary else
+        "u8 one = 1; blocked_pids.update(&pid, &one); return -EPERM;")
+    _lsm_hook = "" if not (enforce and lsm) else ("""
 // BUG 3 fix: submit the canary attempt to userspace BEFORE the -EPERM deny so
 // the agent can log CANARY_ATTEMPT, arm containment and send telemetry. The
 // deny itself is unchanged — callers still return -EPERM after this runs.
@@ -707,10 +742,8 @@ LSM_PROBE(path_rename,
         u64 inode = old_dentry->d_inode->i_ino;
         u8 *is_canary = canary_inodes.lookup(&inode);
         if (is_canary) {
-            u8 one = 1;
-            __emit_canary_attempt(ctx, pid, inode, 1);  // BUG 3: notify first
-            blocked_pids.update(&pid, &one);
-            return -EPERM;
+            __emit_canary_attempt(ctx, pid, inode, 1);  // emit ALWAYS (attribution)
+            /*CANARY_RENAME_ACTION*/
         }
     }
     return 0;
@@ -727,10 +760,8 @@ LSM_PROBE(file_permission, struct file *file, int mask) {
     u8 *is_canary = canary_inodes.lookup(&inode);
     if (!is_canary) return 0;
     u32 pid = bpf_get_current_pid_tgid() >> 32;
-    __emit_canary_attempt(ctx, pid, inode, 2);          // BUG 3: notify first
-    u8 one = 1;
-    blocked_pids.update(&pid, &one);
-    return -EPERM;
+    __emit_canary_attempt(ctx, pid, inode, 2);          // emit ALWAYS (attribution)
+    /*CANARY_WRITE_ACTION*/
 }
 
 // Feature 4: deny exec() for any PID armed in blocked_pids (e.g. a ransomware
@@ -743,7 +774,8 @@ LSM_PROBE(bprm_check_security, struct linux_binprm *bprm) {
     if (blocked && *blocked) return -EPERM;
     return 0;
 }
-"""
+""").replace("/*CANARY_RENAME_ACTION*/", _canary_rename_action) \
+   .replace("/*CANARY_WRITE_ACTION*/", _canary_write_action)
 
     # Feature 5: per-PID per-CPU rate limiter. Returns 1 (throttle) when a PID
     # exceeds RATE_LIMIT events within the current millisecond window.
@@ -1101,8 +1133,7 @@ int kprobe__vfs_write(struct pt_regs *ctx, struct file *file) {{
                 // silent — the throttle below catches it.
                 if (!_was_blocked) silent_enc = 1;
                 wo->nonseq = 0;
-                u8 _one = 1;
-                blocked_pids.update(&pid, &_one);
+                {_arm_nonseq}
             }}
         }} else {{
             wo->nonseq = 0;
@@ -1280,7 +1311,12 @@ def run_sensor(
                 f.write('1')
         except OSError:
             pass
-    src = build_bpf(enforce=enforce, lsm=lsm_active)
+    ablate = _read_ablation()
+    if any(ablate.values()):
+        print(f"[ebpf] ABLATION active (Robustness §3): "
+              f"{[k for k, v in ablate.items() if v]} — these layers' DECISIONS "
+              f"are gated (probe/score/event still fire for attribution)")
+    src = build_bpf(enforce=enforce, lsm=lsm_active, ablate=ablate)
     b   = BPF(text=src)
 
     # Register canary inodes in BPF map AFTER BPF load. Registered in EVERY
@@ -1411,25 +1447,31 @@ def run_sensor(
             # ── FAST PATH: canary → LSM block + SIGSTOP inline ───────
             if enforce and pid > 0:
                 if event.get("event_type") == "CANARY_TOUCHED":
-                    # 1. Arm PID in BPF map → kernel blocks ALL future renames
-                    try:
-                        b["blocked_pids"][b["blocked_pids"].Key(pid)] =                             b["blocked_pids"].Leaf(1)
-                    except Exception:
-                        pass
-                    # 2. SIGSTOP as backup
-                    try:
-                        import os as _os
-                        _os.kill(pid, 19)
-                    except OSError:
-                        pass
-                    _contain_q.put_nowait((pid, comm, "canary"))
+                    if not ablate["canary"]:
+                        # 1. Arm PID in BPF map → kernel blocks ALL future renames
+                        try:
+                            b["blocked_pids"][b["blocked_pids"].Key(pid)] =                                 b["blocked_pids"].Leaf(1)
+                        except Exception:
+                            pass
+                        # 2. SIGSTOP as backup
+                        try:
+                            import os as _os
+                            _os.kill(pid, 19)
+                        except OSError:
+                            pass
+                        _contain_q.put_nowait((pid, comm, "canary"))
+                    else:
+                        event["ablated"] = "canary"     # would have fired; decision gated
                 else:
-                    # Velocity burst: arm in BPF map + SIGSTOP
-                    try:
-                        b["blocked_pids"][b["blocked_pids"].Key(pid)] =                             b["blocked_pids"].Leaf(1)
-                    except Exception:
-                        pass
-                    _contain_q.put_nowait((pid, comm, "rename"))
+                    if not ablate["rename"]:
+                        # Velocity burst: arm in BPF map + SIGSTOP
+                        try:
+                            b["blocked_pids"][b["blocked_pids"].Key(pid)] =                                 b["blocked_pids"].Leaf(1)
+                        except Exception:
+                            pass
+                        _contain_q.put_nowait((pid, comm, "rename"))
+                    else:
+                        event["ablated"] = "rename"     # would have fired; decision gated
             # ── ASYNC PATH: enrich then emit (non-blocking) ───────────
             try:
                 _score_q.put_nowait((event, pid, newname))
@@ -1482,11 +1524,14 @@ def run_sensor(
                        "pattern": "non_sequential", "decided_in": "kernel"},
             )
             if enforce and pid > 0:
-                try:
-                    b["blocked_pids"][b["blocked_pids"].Key(pid)] = b["blocked_pids"].Leaf(1)
-                except Exception:
-                    pass
-                _contain_q.put_nowait((pid, comm, "write_offset"))
+                if not ablate["write_offset"]:
+                    try:
+                        b["blocked_pids"][b["blocked_pids"].Key(pid)] = b["blocked_pids"].Leaf(1)
+                    except Exception:
+                        pass
+                    _contain_q.put_nowait((pid, comm, "write_offset"))
+                else:
+                    sevt["ablated"] = "write_offset"   # would have fired; decision gated
             try:
                 _score_q.put_nowait((sevt, pid, path))
             except Exception:
@@ -1496,19 +1541,18 @@ def run_sensor(
         event = engine.observe_write(pid, ev.ppid, comm, inode, path, ts)
         if event:
             if enforce and pid > 0:
-                # Arm PID in BPF map for silent encryption
-                try:
-                    b["blocked_pids"][b["blocked_pids"].Key(pid)] =                         b["blocked_pids"].Leaf(1)
-                except Exception:
-                    pass
-                # W2 (wiring fix): this branch armed the BPF map but never
-                # queued containment — no SIGSTOP pipeline, no telemetry.
-                # Same pattern as the kernel silent_enc branch above.
-                _contain_q.put_nowait((
-                    pid, comm,
-                    "canary" if event.get("event_type") == "CANARY_TOUCHED"
-                    else "write_offset",
-                ))
+                _layer = ("canary" if event.get("event_type") == "CANARY_TOUCHED"
+                          else "write_offset")
+                if not ablate[_layer]:
+                    # Arm PID in BPF map for silent encryption + queue containment
+                    # (W2 wiring fix: previously armed but never contained).
+                    try:
+                        b["blocked_pids"][b["blocked_pids"].Key(pid)] =                             b["blocked_pids"].Leaf(1)
+                    except Exception:
+                        pass
+                    _contain_q.put_nowait((pid, comm, _layer))
+                else:
+                    event["ablated"] = _layer          # would have fired; decision gated
             try:
                 _score_q.put_nowait((event, pid, path))
             except Exception:
@@ -1560,11 +1604,14 @@ def run_sensor(
                 except Exception:
                     _emit(event)
                 if enforce and pid > 0 and entropy >= 6.5:
-                    try:
-                        b["blocked_pids"][b["blocked_pids"].Key(pid)] = b["blocked_pids"].Leaf(1)
-                    except Exception:
-                        pass
-                    _contain_q.put_nowait((pid, comm, "entropy"))
+                    if not ablate["entropy"]:
+                        try:
+                            b["blocked_pids"][b["blocked_pids"].Key(pid)] = b["blocked_pids"].Leaf(1)
+                        except Exception:
+                            pass
+                        _contain_q.put_nowait((pid, comm, "entropy"))
+                    else:
+                        event["ablated"] = "entropy"    # would have fired; decision gated
     b["behavior_events"].open_perf_buffer(_handle_behavior, page_cnt=256)
 
     def _handle_exec(cpu, data, size):
@@ -1655,11 +1702,14 @@ def run_sensor(
         event["canary_hit"] = True
         engine._active_pids.add(pid)
         if enforce and pid > 0:
-            try:
-                b["blocked_pids"][b["blocked_pids"].Key(pid)] = b["blocked_pids"].Leaf(1)
-            except Exception:
-                pass
-            _contain_q.put_nowait((pid, comm, "canary"))
+            if not ablate["canary"]:
+                try:
+                    b["blocked_pids"][b["blocked_pids"].Key(pid)] = b["blocked_pids"].Leaf(1)
+                except Exception:
+                    pass
+                _contain_q.put_nowait((pid, comm, "canary"))
+            else:
+                event["ablated"] = "canary"            # would have fired; decision gated
         try:
             _score_q.put_nowait((event, pid, path))
         except Exception:

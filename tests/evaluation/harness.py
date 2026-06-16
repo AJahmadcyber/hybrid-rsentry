@@ -61,7 +61,12 @@ OPERATOR_UID = 1000
 OPERATOR_GID = 1000
 EVAL_BASE = Path("/tmp/rsentry_eval")
 EVIDENCE_BASE = Path("/tmp/rsentry_evidence")
-READY_TIMEOUT = 90.0          # BPF compile + ~492k-hash lineage prewarm
+READY_TIMEOUT = 120.0         # BPF compile + ~492k-hash lineage prewarm (headroom
+                              # for slow compiles under load across long sweeps)
+AGENT_SETTLE_S = 2.0          # after killing a fresh agent, let the kernel reclaim
+                              # its BPF programs/maps/perf buffers (async/RCU) before
+                              # the next agent loads — avoids transient perf-buffer/
+                              # locked-memory exhaustion across hundreds of trials
 POLL_INTERVAL = 0.003         # fine poll so stage observer-latency stays small
 CGROUP_PREFIX = "rsentry-contain"
 CGROUP_ROOT = Path("/sys/fs/cgroup")
@@ -262,27 +267,34 @@ class _StubBackend:
 
 
 # --------------------------------------------------------------------------- #
-# layer_toggles — ablation hook. No per-layer decision gate exists in the agent
-# yet (design §3.2 / §7-Q4), so disabling any layer raises — we never fake it.
+# layer_toggles — ablation hook (Robustness §3). A REAL per-layer decision gate
+# now exists in the agent (monitor_ebpf.py: build_bpf ablation + run_sensor
+# userspace gates, read from ABLATE_<LAYER> env). {layer: False} disables that
+# layer's DECISION only (probe/score/event still fire — "would have fired"
+# attribution); other layers run unchanged. We never fake it.
 # --------------------------------------------------------------------------- #
 
-def _validate_layer_toggles(layer_toggles: Optional[Dict[str, bool]]) -> None:
+# Layers the agent can actually ablate (entropy/execve are userspace-only, etc).
+ABLATABLE_LAYERS = frozenset({"rename", "write_offset", "entropy", "canary"})
+
+
+def _ablation_env(layer_toggles: Optional[Dict[str, bool]]) -> Dict[str, str]:
+    """Map {layer: False} → {'ABLATE_<LAYER>': '1'} for the agent subprocess env.
+    Raises on an unknown or non-ablatable layer (never a silent no-op)."""
+    env: Dict[str, str] = {}
     if not layer_toggles:
-        return
+        return env
     for layer, enabled in layer_toggles.items():
         if layer not in KNOWN_LAYERS:
             raise ValueError(f"unknown layer {layer!r}; known: {sorted(KNOWN_LAYERS)}")
         if enabled:
-            continue  # enabling is the default; nothing to do
-        # TODO(ablation): wire SENSOR_DISABLE_<LAYER> decision-path gates into
-        # agent/monitor_ebpf.py run_sensor (the _handle_* dispatchers) and
-        # agent/monitor.py before Axis-3 ablation can run. Until then we refuse
-        # to silently run a no-op "disabled" config that would look like data.
-        raise NotImplementedError(
-            f"layer_toggles[{layer!r}]=disabled is not supported: the agent has "
-            f"no per-layer decision-path gate yet (docs/evaluation-design.md "
-            f"§3.2 / §7-Q4). Add a SENSOR_DISABLE_{layer.upper()} gate first."
-        )
+            continue  # enabling is the default
+        if layer not in ABLATABLE_LAYERS:
+            raise NotImplementedError(
+                f"layer {layer!r} has no decision gate (ablatable: "
+                f"{sorted(ABLATABLE_LAYERS)})")
+        env[f"ABLATE_{layer.upper()}"] = "1"
+    return env
 
 
 # --------------------------------------------------------------------------- #
@@ -290,10 +302,12 @@ def _validate_layer_toggles(layer_toggles: Optional[Dict[str, bool]]) -> None:
 # --------------------------------------------------------------------------- #
 
 def _start_agent(watch_dir: Path, *, lsm: bool, enforce: bool,
-                 backend_url: str, restart_id: str) -> Tuple[subprocess.Popen, Path]:
+                 backend_url: str, restart_id: str,
+                 ablation_env: Optional[Dict[str, str]] = None) -> Tuple[subprocess.Popen, Path]:
     """Start a fresh `agent.monitor` (eBPF) and return (proc, log_path). Caller
     waits for readiness. Mirrors the live-test launch (unbuffered, merged
-    stdout+stderr to a file)."""
+    stdout+stderr to a file). ``ablation_env`` (ABLATE_<LAYER>=1) is passed
+    through to gate that layer's decision (Robustness §3)."""
     log_path = EVAL_BASE / f"agent_{restart_id}.log"
     env = dict(
         os.environ,
@@ -304,6 +318,8 @@ def _start_agent(watch_dir: Path, *, lsm: bool, enforce: bool,
         HEARTBEAT_INTERVAL="3600",
         PYTHONUNBUFFERED="1",
     )
+    if ablation_env:
+        env.update(ablation_env)            # ABLATE_RENAME=1, etc. (sudo -E safe)
     cmd = [sys.executable, "-u", "-m", "agent.monitor",
            "--backend", "ebpf", "--watch", str(watch_dir),
            "--mode", "enforce" if enforce else "audit",
@@ -311,6 +327,10 @@ def _start_agent(watch_dir: Path, *, lsm: bool, enforce: bool,
     logfh = open(log_path, "w")
     proc = subprocess.Popen(cmd, cwd=str(_PROJECT_ROOT), env=env,
                             stdout=logfh, stderr=subprocess.STDOUT)
+    # Close the PARENT's copy of the log fd — the child has its own dup via Popen.
+    # Without this the runner leaks one fd per trial (750 at N=30 → EMFILE), which
+    # surfaces at scale as agent-start / socket failures.
+    logfh.close()
     return proc, log_path
 
 
@@ -535,8 +555,11 @@ def _teardown(agent: Optional[subprocess.Popen], workload: Optional[subprocess.P
               watch_dir: Optional[Path], symlink_path: Optional[Path],
               ts_path: Optional[str], log_path: Optional[Path],
               preserve_log: bool = False) -> None:
-    # 1. Stop the agent (graceful, then hard).
-    if agent is not None and agent.poll() is None:
+    # 1. Stop the agent (graceful, then hard) and let the kernel reclaim its BPF
+    #    resources (programs/maps/perf buffers free asynchronously on process
+    #    exit) before the next fresh agent loads.
+    agent_was_running = agent is not None and agent.poll() is None
+    if agent_was_running:
         try:
             agent.terminate(); agent.wait(timeout=5)
         except Exception:
@@ -544,6 +567,8 @@ def _teardown(agent: Optional[subprocess.Popen], workload: Optional[subprocess.P
                 agent.kill(); agent.wait(timeout=5)
             except Exception:
                 pass
+    if agent is not None:
+        time.sleep(AGENT_SETTLE_S)          # reclaim window (avoids perf-buffer churn)
     # 2. Kill any workload leftover (only AFTER the result was taken).
     if workload is not None and workload.poll() is None:
         for s in (signal.SIGCONT, signal.SIGKILL):
@@ -610,7 +635,7 @@ def run_trial(workload: Workload, *, lsm: bool, enforce: bool,
         raise PermissionError(
             "run_trial requires root — it starts a real agent.monitor that loads "
             "BPF and writes iptables/cgroup. Run the trial under sudo.")
-    _validate_layer_toggles(layer_toggles)
+    ablation_env = _ablation_env(layer_toggles)
 
     running = _agent_already_running()
     if running:
@@ -644,7 +669,8 @@ def run_trial(workload: Workload, *, lsm: bool, enforce: bool,
         stub.start()
 
         agent, log_path = _start_agent(watch_dir, lsm=lsm, enforce=enforce,
-                                       backend_url=stub.url, restart_id=restart_id)
+                                       backend_url=stub.url, restart_id=restart_id,
+                                       ablation_env=ablation_env)
         if not _wait_ready(log_path, agent, READY_TIMEOUT):
             tail = "\n".join(_read_text(log_path).splitlines()[-20:])
             raise RuntimeError(
@@ -685,7 +711,17 @@ def run_trial(workload: Workload, *, lsm: bool, enforce: bool,
 
         t0_ns, touches = _read_sidechannel(ts_path)
 
-        detected = ("detect" in stage_ns) or stub.detected_pid(wl_pid)
+        # Detection (D, §0.2) = an ACTUAL containment decision: the "SIGSTOP
+        # pipeline … layer=X" line, which names the layer that drove it. This is
+        # the source of truth in ENFORCE mode and is ablation-correct: an ablated
+        # layer still EMITS its event (for "would have fired" attribution) but
+        # does NOT contain, so it must NOT count as detection. Counting the stub's
+        # emitted events here would make an ablated layer's would-have-fired event
+        # a false-positive detection (detected=True, layer=None). The stub is only
+        # a fallback for AUDIT mode, where no containment pipeline exists.
+        detected = "detect" in stage_ns
+        if not enforce:
+            detected = detected or stub.detected_pid(wl_pid)
         contained = "complete" in stage_ns
         t_sigstop = stage_ns.get("sigstop")
         files_before = (sum(1 for t in touches if t < t_sigstop)
