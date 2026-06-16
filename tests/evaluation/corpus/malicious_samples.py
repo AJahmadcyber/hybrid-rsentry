@@ -59,6 +59,18 @@ FAMILIES: Dict[str, dict] = {
         "expected_primary_layer": "entropy",
         "comm": "entropy-locker",
     },
+    "canary_touch": {
+        # Renames a SEEDED decoy → caught ONLY by the canary layer (the
+        # low-entropy ransom ext means the rename layer won't back it up). The
+        # necessity-proof workload for the `-canary` ablation (Robustness §3).
+        "sim_module": "simulations.sim_canary",
+        "params": {"max_files": 5, "delay": 0.1},
+        "expected_primary_layer": "canary",
+        "comm": "canary-locker",
+        # operates on the agent's decoys in the watch ROOT (seeded at startup),
+        # not a fresh corpus zone — see build_workload's special setup.
+        "targets_seeded_decoys": True,
+    },
 }
 
 _CORPUS_EXTS = (".docx", ".xlsx", ".pdf", ".db", ".jpg", ".vmdk")
@@ -110,8 +122,15 @@ def build_workload(entry: dict) -> Workload:
     sim_module = entry["sim_module"]
     params = entry["params"]
     zone_name = f"{family}_zone"
+    targets_decoys = spec.get("targets_seeded_decoys", False)
 
     def setup(watch_dir: Path) -> Path:
+        if targets_decoys:
+            # canary_touch: the agent already seeded decoys in the watch ROOT at
+            # startup (filesystem state IDENTICAL across ablation conditions — the
+            # decoys are seeded the same way regardless of ABLATE_CANARY). The sim
+            # renames those decoys; no fresh corpus zone is created.
+            return watch_dir
         zone = watch_dir / zone_name
         _seed_corpus(zone)
         return zone
