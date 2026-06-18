@@ -16,6 +16,7 @@
 [![Version](https://img.shields.io/badge/version-v2.2.0-blue?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
 [![License](https://img.shields.io/badge/License-Apache%202.0-yellow?style=flat-square)](LICENSE-APACHE)
+
 **[Landing Page](https://mohhudib.github.io/hybrid-rsentry/)**
 
 </div>
