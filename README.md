@@ -262,6 +262,7 @@ Open [http://localhost:3000](http://localhost:3000) to access the dashboard.
 | `GROQ_API_KEY` | No | Groq API key — auto-detected by `gsk_` prefix; used as primary AI provider if set |
 | `GROQ_BASE_URL` | No | Groq base URL (default: `https://api.groq.com/openai/v1`) |
 | `GROQ_MODEL` | No | Groq model name (e.g. `llama-3.3-70b-versatile`) |
+| `SENSOR_BACKEND` | No | Override sensor: `ebpf` or `inotify` (auto-detected if unset) |
 *Groq keys are also accepted — auto-detected by the `gsk_` prefix.
 
 ---
