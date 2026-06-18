@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "n_trials": 375,
+    "n_trials": 450,
     "n_per_family": 15,
     "conditions": [
       "baseline",
@@ -12,44 +12,44 @@
     "completeness": {
       "by_group": {
         "baseline": {
-          "planned": 75,
-          "ran": 75,
+          "planned": 90,
+          "ran": 90,
           "missing": [],
           "errored": []
         },
         "ablate_rename": {
-          "planned": 75,
-          "ran": 75,
+          "planned": 90,
+          "ran": 90,
           "missing": [],
           "errored": []
         },
         "ablate_write_offset": {
-          "planned": 75,
-          "ran": 75,
+          "planned": 90,
+          "ran": 90,
           "missing": [],
           "errored": []
         },
         "ablate_entropy": {
-          "planned": 75,
-          "ran": 75,
+          "planned": 90,
+          "ran": 90,
           "missing": [],
           "errored": []
         },
         "ablate_canary": {
-          "planned": 75,
-          "ran": 75,
+          "planned": 90,
+          "ran": 90,
           "missing": [],
           "errored": []
         }
       },
-      "planned": 375,
-      "ran": 375,
+      "planned": 450,
+      "ran": 450,
       "missing": 0,
       "errored": 0,
       "complete": true
     },
     "complete": true,
-    "generated": "2026-06-16T20:29:02+00:00"
+    "generated": "2026-06-17T00:04:38+00:00"
   },
   "ablation_table": {
     "baseline": {
@@ -90,6 +90,15 @@
         ]
       },
       "canary_touch": {
+        "n": 15,
+        "detected": 15,
+        "rate": 1.0,
+        "ci": [
+          0.7961166989641514,
+          0.9999999999999999
+        ]
+      },
+      "writeoffset_only": {
         "n": 15,
         "detected": 15,
         "rate": 1.0,
@@ -144,6 +153,15 @@
           0.7961166989641514,
           0.9999999999999999
         ]
+      },
+      "writeoffset_only": {
+        "n": 15,
+        "detected": 15,
+        "rate": 1.0,
+        "ci": [
+          0.7961166989641514,
+          0.9999999999999999
+        ]
       }
     },
     "ablate_write_offset": {
@@ -191,6 +209,15 @@
           0.7961166989641514,
           0.9999999999999999
         ]
+      },
+      "writeoffset_only": {
+        "n": 15,
+        "detected": 0,
+        "rate": 0.0,
+        "ci": [
+          0.0,
+          0.20388330103584854
+        ]
       }
     },
     "ablate_entropy": {
@@ -231,6 +258,15 @@
         ]
       },
       "canary_touch": {
+        "n": 15,
+        "detected": 15,
+        "rate": 1.0,
+        "ci": [
+          0.7961166989641514,
+          0.9999999999999999
+        ]
+      },
+      "writeoffset_only": {
         "n": 15,
         "detected": 15,
         "rate": 1.0,
@@ -284,6 +320,15 @@
         "ci": [
           0.0,
           0.20388330103584854
+        ]
+      },
+      "writeoffset_only": {
+        "n": 15,
+        "detected": 15,
+        "rate": 1.0,
+        "ci": [
+          0.7961166989641514,
+          0.9999999999999999
         ]
       }
     }
@@ -339,6 +384,17 @@
         "rename": 15
       },
       "ablate_primary_condition": "ablate_rename",
+      "rate_when_primary_off": 0.0,
+      "backup_layers": {},
+      "necessary": true,
+      "redundant": false
+    },
+    "writeoffset_only": {
+      "primary": "write_offset",
+      "primary_layers": {
+        "write_offset": 15
+      },
+      "ablate_primary_condition": "ablate_write_offset",
       "rate_when_primary_off": 0.0,
       "backup_layers": {},
       "necessary": true,
