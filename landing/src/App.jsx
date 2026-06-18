@@ -9,8 +9,9 @@ const ThreatTimeline = lazy(() => import('./components/sections/ThreatTimeline')
 const Pillars        = lazy(() => import('./components/sections/Pillars'));
 const ThreatConsole  = lazy(() => import('./components/sections/ThreatConsole'));
 const TechUniverse   = lazy(() => import('./components/sections/TechUniverse'));
-const Architecture   = lazy(() => import('./components/sections/Architecture'));
-const Team           = lazy(() => import('./components/sections/Team'));
+const Architecture      = lazy(() => import('./components/sections/Architecture'));
+const EvaluationResults = lazy(() => import('./components/sections/EvaluationResults'));
+const Team              = lazy(() => import('./components/sections/Team'));
 const FinalCTA       = lazy(() => import('./components/sections/FinalCTA'));
 
 function SectionFallback() {
@@ -65,6 +66,12 @@ export default function App() {
       </Suspense>
 
       <div className="w-full h-px" style={{ background: 'linear-gradient(90deg, transparent, #00ff8820, transparent)' }} />
+
+      <Suspense fallback={<SectionFallback />}>
+        <EvaluationResults />
+      </Suspense>
+
+      <div className="w-full h-px" style={{ background: 'linear-gradient(90deg, transparent, #ffd70020, transparent)' }} />
 
       <Suspense fallback={<SectionFallback />}>
         <Team />
