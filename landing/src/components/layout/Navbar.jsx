@@ -7,6 +7,7 @@ const NAV_LINKS = [
   { label: 'Pillars',    href: '#pillars' },
   { label: 'Console',    href: '#console' },
   { label: 'Arch',       href: '#architecture' },
+  { label: 'Eval',       href: '#evaluation' },
   { label: 'Team',       href: '#team' },
 ];
 

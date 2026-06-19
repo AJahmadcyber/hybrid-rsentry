@@ -124,6 +124,11 @@ python simulations/sim_akira.py
 # Qilin — percent-mode (40 % of corpus), 7-char random extension
 python simulations/sim_qilin.py
 
+# Write-offset isolation — proves write-offset layer necessity independently
+python simulations/sim_writeoffset_only.py
+
+# Run all simulations sequentially — full detection coverage validation
+python simulations/sim_all.py
 # Generic patterns (earlier traversal sims):
 python simulations/sim_random.py --delay 0.1
 python simulations/sim_depth.py  --delay 0.1
@@ -137,7 +142,23 @@ All simulations support `--validate-defense` to check that containment fired:
 ```bash
 python simulations/sim_lockbit.py --validate-defense
 ```
+---
 
+## Run the forensic walkthrough demo (persistent artifacts for inspection)
+
+Unlike the simulations above (which clean up automatically), `demo_forensic.py`
+leaves a persistent corpus on disk so you can inspect before/after state:
+
+```bash
+sudo -E ./venv/bin/python demo_forensic.py <family>
+```
+
+Families: `akira`, `qilin`, `lockbit`, `entropy_only`, `canary_touch`, `writeoffset_only`
+
+Cleanup when done:
+```bash
+sudo rm -rf /tmp/rsentry_demo
+```
 ---
 
 ## Diagnostic commands

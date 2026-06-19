@@ -11,10 +11,11 @@
 [![Celery](https://img.shields.io/badge/Celery-5.x-37814A?style=flat-square)](https://docs.celeryq.dev)
 [![Redis](https://img.shields.io/badge/Redis-7.x-DC382D?style=flat-square&logo=redis)](https://redis.io)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791?style=flat-square&logo=postgresql)](https://postgresql.org)
-[![Tests](https://img.shields.io/badge/tests-182%20passing-brightgreen?style=flat-square)](#testing)
+[![Tests](https://img.shields.io/badge/tests-234%20passing-brightgreen?style=flat-square)](#testing)
 [![Coverage](https://img.shields.io/badge/coverage-89%25-brightgreen?style=flat-square)](#testing)
 [![Version](https://img.shields.io/badge/version-v2.2.0-blue?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
+[![License](https://img.shields.io/badge/License-Apache%202.0-yellow?style=flat-square)](LICENSE-APACHE)
 
 **[Landing Page](https://mohhudib.github.io/hybrid-rsentry/)**
 
@@ -259,7 +260,11 @@ Open [http://localhost:3000](http://localhost:3000) to access the dashboard.
 | `NVIDIA_API_KEY` | Yes* | API key for live event AI analysis (also readable as `AI_API_KEY`) |
 | `NVIDIA_API_KEY_ALERTS` | Yes* | API key for on-demand alert AI analysis (also readable as `AI_API_KEY_ALERTS`) |
 | `AI_API_KEY_CEREBRAS` | No | Cerebras API key — if set, becomes the primary AI provider (fastest); NVIDIA/Groq used as fallback |
-
+| `GROQ_API_KEY` | No | Groq API key — auto-detected by `gsk_` prefix; used as primary AI provider if set |
+| `GROQ_BASE_URL` | No | Groq base URL (default: `https://api.groq.com/openai/v1`) |
+| `GROQ_MODEL` | No | Groq model name (e.g. `llama-3.3-70b-versatile`) |
+| `SENSOR_BACKEND` | No | Override sensor: `ebpf` or `inotify` (auto-detected if unset) |
+| `DRY_RUN` | No | Set to `true` to disable actual containment actions (SIGSTOP, iptables, SIGKILL) — evidence still captured, alerts still created. Safe for testing. |
 *Groq keys are also accepted — auto-detected by the `gsk_` prefix.
 
 ---
@@ -327,6 +332,7 @@ hybrid-rsentry/
 ├── .github/workflows/           # CI lint + Docker build + landing page deploy
 ├── start.sh                     # One-command startup script
 ├── test_event.sh                # One-command pipeline test (sends CANARY_TOUCHED event)
+├── demo_forensic.py             # Forensic walkthrough demo — before/attack/after, leaves artifacts on disk
 └── docker-compose.yml
 ```
 
@@ -339,7 +345,7 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
-**182 tests**, 89% coverage across `entropy.py`, `lineage.py`, `adaptive.py`, severity classification, simulation safety, API routers, AI analyst, Celery tasks, and the containment pipeline. All tests are isolated — no live services required.
+**234 tests**, 89% coverage across `entropy.py`, `lineage.py`, `adaptive.py`, severity classification, simulation safety, API routers, AI analyst, Celery tasks, and the containment pipeline. All tests are isolated — no live services required.
 
 Run the LockBit 5.0 evaluation separately:
 ```bash
@@ -348,7 +354,19 @@ pytest tests/test_lockbit.py -v
 All 4 targets pass: files-before-detection < 3, latency < 500 ms, FP = 0%, coverage = 100%.
 
 ---
+## Forensic Walkthrough Demo
 
+`demo_forensic.py` runs a full BEFORE/ATTACK/AFTER walkthrough against a
+persistent corpus, leaving artifacts on disk for inspection:
+
+    sudo -E ./venv/bin/python demo_forensic.py <family>
+
+Families: `akira`, `qilin`, `lockbit`, `entropy_only`, `canary_touch`, `writeoffset_only`
+
+Cleanup when done:
+
+    sudo rm -rf /tmp/rsentry_demo
+---
 ## Detection Flow
 
 ```
@@ -427,7 +445,13 @@ PRs that introduce new false positives on a live Kali system will not be merged.
 
 ## License
 
-This project is licensed under the MIT License — see [LICENSE](LICENSE).
+This project is dual-licensed under your choice of the **MIT License** or the
+**Apache License 2.0**.
+
+- [LICENSE](LICENSE) — MIT License
+- [LICENSE-APACHE](LICENSE-APACHE) — Apache License 2.0
+
+You may use this project under the terms of either license.
 
 ---
 

@@ -74,9 +74,9 @@ class EntropyEngine:
     Call .observe(path) whenever a file is modified.
     """
 
-    MAX_TRACKED_FILES = 5000  # حد أقصى عشان نتجنب memory leak
+    MAX_TRACKED_FILES = 5000   # upper limit to avoid a memory leak
 
-    def __init__(
+   def __init__(
         self,
         spike_threshold: float = ENTROPY_SPIKE_THRESHOLD,
         abs_threshold: float = HIGH_ENTROPY_ABSOLUTE,
@@ -109,7 +109,7 @@ class EntropyEngine:
             return None
 
         try:
-            # نقرأ أول 65536 byte بس — كافي لحساب الـ entropy وأسرع بكثير
+            # We only read the first 65536 bytes — enough to compute entropy and much faster
             with open(p, "rb") as f:
                 data = f.read(65536)
         except (PermissionError, OSError):
